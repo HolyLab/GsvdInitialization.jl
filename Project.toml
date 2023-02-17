@@ -1,0 +1,13 @@
+name = "GsvdInitialization"
+uuid = "2ac24108-be9c-42b8-8d78-6a4f62a87e7d"
+authors = ["youdongguo <1010705897@qq.com> and contributors"]
+version = "0.1.0"
+
+[compat]
+julia = "1"
+
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Test"]
