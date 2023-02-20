@@ -3,12 +3,13 @@ module GsvdInitialization
 using LinearAlgebra, NMF
 using JuMP, Ipopt
 
+export gsvdinit
+
 function our_nndsvd(U::AbstractArray, s::AbstractArray, V::AbstractArray, X::AbstractArray{T}, k::Int) where T
     p, n = size(X)
     W = Matrix{T}(undef, p, k)
     Ht = Matrix{T}(undef, n, k)
     H = Matrix{T}(undef, k, n)
-    
     NMF._nndsvd!(U, s, V, X, W, Ht, true, 0)
     for j = 1:k
         for i = 1:n
@@ -18,25 +19,25 @@ function our_nndsvd(U::AbstractArray, s::AbstractArray, V::AbstractArray, X::Abs
     return W, H
 end
 
-function overcomplete_nmf_seed(X::AbstractArray, W0::AbstractArray, H0::AbstractArray, kadd::Int)
+function gsvdinit(X::AbstractArray, W0::AbstractArray, H0::AbstractArray, kadd::Int)
     n = size(W0,2)
     k > n || throw(ArgumentError("# of extra columns must less than 1st NMF components"))
     U, S, V = svd(X)
-    W1, H1 = overcomplete_nmf_seed(U[:,1:n], S[1:n], V[:,1:n], X, W0, H0, kadd)
+    W1, H1 = gsvdinit(U[:,1:n], S[1:n], V[:,1:n], X, W0, H0, kadd)
     return W1, H1
 end
 
-function overcomplete_nmf_seed(U0::AbstractArray, S0::AbstractArray, V0::AbstractArray, X::AbstractArray, W0::AbstractArray, H0::AbstractArray, kadd::Int)
-    Hadd = gsvd_ini_H(U0, S0, V0, W0, H0, kadd)
-    Wadd, a = ls_ini_W(X, W0, H0, Hadd)
+function gsvdinit(U0::AbstractArray, S0::AbstractArray, V0::AbstractArray, X::AbstractArray, W0::AbstractArray, H0::AbstractArray, kadd::Int)
+    Hadd = init_H(U0, S0, V0, W0, H0, kadd)
+    Wadd, a = init_W(X, W0, H0, Hadd)
     Wadd_1, Hadd_1 = our_nndsvd(Wadd, ones(kadd), Hadd', X, kadd)
     W1, H1 = [repeat(a', size(W0, 1)).*W0 Wadd_1], [H0; Hadd_1]
-    cs = Wcols_modification(X, W1, H1, 1)
+    cs = Wcols_modification(X, W1, H1)
     W1_1, H1_1 = repeat(cs', m, 1).* W1, H1
     return W1_1, H1_1
 end
 
-function gsvd_ini_H(U0::AbstractArray, S0::AbstractArray, V0::AbstractArray, W0::AbstractArray, H0::AbstractArray, kadd::Int)
+function init_H(U0::AbstractArray, S0::AbstractArray, V0::AbstractArray, W0::AbstractArray, H0::AbstractArray, kadd::Int)
     _, _, Q, D1, D2, R = svd(Matrix(Diagonal(S0)), (U0'*W0)*(H0*V0));
     F = (diag(D1)./diag(D2)).^2
     if kadd < size(U0, 2)
@@ -57,10 +58,10 @@ function gsvd_ini_H(U0::AbstractArray, S0::AbstractArray, V0::AbstractArray, W0:
     return Hadd_1'
 end
 
-function ls_ini_W(X::AbstractArray, W0::AbstractArray, H0::AbstractArray, Hadd::AbstractArray)
+function init_W(X::AbstractArray, W0::AbstractArray, H0::AbstractArray, Hadd::AbstractArray)
     m, r = size(W0)
     A, b, _, P, _, _, _, γ, Π = obj_para(X, W0, H0, Hadd)
-    @show eigen(A).values
+    # @show eigen(A).values
     model = Model(Ipopt.Optimizer)
     @variable(model, a[1:r] >= 1e-12, start = 1)
     @objective(model, Min, a'*A*a+2*b'*a)
@@ -78,7 +79,7 @@ function obj_para(X::AbstractArray{T}, W0::AbstractArray, H0::AbstractArray, Had
     for q in 1:R
         ξ[q] = W0[:,q]'*X*H0[q,:]
         for p in q:R
-            Θ[p,q] = (W0[:,p]'*W0[:,q])*(H0[p,:]'*H0[q,:])#sum(M[p].*M[q])
+            Θ[p,q] = (W0[:,p]'*W0[:,q])*(H0[p,:]'*H0[q,:])
             Θ[q,p] = Θ[p,q]
         end
     end
@@ -102,28 +103,26 @@ function obj_para(X::AbstractArray{T}, W0::AbstractArray, H0::AbstractArray, Had
     return A, b, C, P, Θ, ξ, Φ, γ, Π
 end
 
-function Wcols_modification(D::AbstractArray{T}, W::AbstractArray, H::AbstractArray, variant::Int) where T
-    m, n = size(W)
-    @assert n == size(H, 1)
+function Wcols_modification(X::AbstractArray{T}, W::AbstractArray, H::AbstractArray) where T
+    n = size(W, 2)
     a = Array{T}(undef, n)
     B = Array{T}(undef, n, n)
     for q in 1:n
-        a[q] = W[:,q]'*D*H[q,:]
+        a[q] = W[:,q]'*X*H[q,:]
         for p in q:n
-            B[p,q] = (W[:,p]'*W[:,q])*(H[p,:]'*H[q,:])#sum(M[p].*M[q])
+            B[p,q] = (W[:,p]'*W[:,q])*(H[p,:]'*H[q,:])
             B[q,p] = B[p,q]
         end
     end
-    if variant == 1
-        cs = nonneg_lsq(B, a)
-    else variant == 2
-        cs = ((B'*B)\B')*a
-    end    
-    return cs
+    model = Model(Ipopt.Optimizer)
+    @variable(model, b[1:n] >= 1e-12, start = 1)
+    @objective(model, Min, b'*B*b+2*a'*b)
+    optimize!(model)
+    β = JuMP.value.(b)
+    return β
 end
 
 end
-
 
 # function objective_W(X::AbstractArray{T}, α::AbstractArray, W0::AbstractArray, H0::AbstractArray, Hadd::AbstractArray) where T
 #     A, b, C, P, Θ, ξ, Φ, γ, Π = obj_para(X, W0, H0, Hadd)
