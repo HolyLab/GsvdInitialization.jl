@@ -3,38 +3,23 @@ module GsvdInitialization
 using LinearAlgebra, NMF
 using JuMP, Ipopt
 
-export gsvdinit
+export gsvdinit,
+       init_H,
+       init_W,
+       Wcols_modification
 
-function our_nndsvd(U::AbstractArray, s::AbstractArray, V::AbstractArray, X::AbstractArray{T}, k::Int) where T
-    p, n = size(X)
-    W = Matrix{T}(undef, p, k)
-    Ht = Matrix{T}(undef, n, k)
-    H = Matrix{T}(undef, k, n)
-    NMF._nndsvd!(U, s, V, X, W, Ht, true, 0)
-    for j = 1:k
-        for i = 1:n
-            H[j,i] = Ht[i,j]
-        end
-    end
-    return W, H
-end
-
-function gsvdinit(X::AbstractArray, W0::AbstractArray, H0::AbstractArray, kadd::Int)
-    n = size(W0,2)
-    k > n || throw(ArgumentError("# of extra columns must less than 1st NMF components"))
-    U, S, V = svd(X)
-    W1, H1 = gsvdinit(U[:,1:n], S[1:n], V[:,1:n], X, W0, H0, kadd)
-    return W1, H1
-end
-
-function gsvdinit(U0::AbstractArray, S0::AbstractArray, V0::AbstractArray, X::AbstractArray, W0::AbstractArray, H0::AbstractArray, kadd::Int)
+function gsvdinit(X::AbstractArray, W0::AbstractArray, H0::AbstractArray, kadd::Int; initdata = nothing)
+    m, n = size(W0)
+    kadd <= n || throw(ArgumentError("# of extra columns must less than 1st NMF components"))
+    U, S, V = initdata === nothing ? svd(X) : (initdata.U, initdata.S, initdata.V)
+    U0, S0, V0 = U[:,1:n], S[1:n], V[:,1:n]
     Hadd = init_H(U0, S0, V0, W0, H0, kadd)
     Wadd, a = init_W(X, W0, H0, Hadd)
-    Wadd_1, Hadd_1 = our_nndsvd(Wadd, ones(kadd), Hadd', X, kadd)
-    W1, H1 = [repeat(a', size(W0, 1)).*W0 Wadd_1], [H0; Hadd_1]
-    cs = Wcols_modification(X, W1, H1)
-    W1_1, H1_1 = repeat(cs', m, 1).* W1, H1
-    return W1_1, H1_1
+    Wadd_nn, Hadd_nn = NMF.nndsvd(X, kadd, initdata = (U = Wadd, S = ones(kadd), V = Hadd'))
+    W0_1, H0_1 = [repeat(a', m, 1).*W0 Wadd_nn], [H0; Hadd_nn]
+    cs = Wcols_modification(X, W0_1, H0_1)
+    W0_2, H0_2 = repeat(cs', m, 1).* W0_1, H0_1
+    return W0_2, H0_2, cs, W0_1, H0_1, a, Wadd, Hadd
 end
 
 function init_H(U0::AbstractArray, S0::AbstractArray, V0::AbstractArray, W0::AbstractArray, H0::AbstractArray, kadd::Int)
@@ -46,7 +31,7 @@ function init_H(U0::AbstractArray, S0::AbstractArray, V0::AbstractArray, W0::Abs
         while k0 >= 1
             j = findmax(F)[2]
             F[j] = -1
-            h = copy(Q'*R)[:, j]
+            h = [Q[:,i]'*R[:,j] for i in axes(Q, 2)]
             push!(Hadd_vec, h) 
             k0 -= 1   
         end
@@ -61,8 +46,7 @@ end
 function init_W(X::AbstractArray, W0::AbstractArray, H0::AbstractArray, Hadd::AbstractArray)
     m, r = size(W0)
     A, b, _, P, _, _, _, γ, Π = obj_para(X, W0, H0, Hadd)
-    # @show eigen(A).values
-    model = Model(Ipopt.Optimizer)
+    model = Model(optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 0))
     @variable(model, a[1:r] >= 1e-12, start = 1)
     @objective(model, Min, a'*A*a+2*b'*a)
     optimize!(model)
@@ -114,9 +98,9 @@ function Wcols_modification(X::AbstractArray{T}, W::AbstractArray, H::AbstractAr
             B[q,p] = B[p,q]
         end
     end
-    model = Model(Ipopt.Optimizer)
+    model = Model(optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 0))
     @variable(model, b[1:n] >= 1e-12, start = 1)
-    @objective(model, Min, b'*B*b+2*a'*b)
+    @objective(model, Min, b'*B*b-2*a'*b)
     optimize!(model)
     β = JuMP.value.(b)
     return β
@@ -135,4 +119,15 @@ end
 #     _, _, _, P, Θ, ξ, Φ, γ = obj_para(X, W0, H0, Hadd)
 #     E = α'*Θ*α-2*ξ'*α+Φ-2*γ'*l+2*α'*P*l+l'*l
 #     return E, P, Θ, ξ, Φ, γ
+# end
+
+# function gsvdinit(U0::AbstractArray, S0::AbstractArray, V0::AbstractArray, X::AbstractArray, W0::AbstractArray, H0::AbstractArray, kadd::Int)
+#     m = size(W0, 1)
+#     Hadd = init_H(U0, S0, V0, W0, H0, kadd)
+#     Wadd, a = init_W(X, W0, H0, Hadd)
+#     Wadd_nn, Hadd_nn = nndsvd(X, kadd, initdata = (U = Wadd, S = ones(kadd), V = Hadd'))
+#     W0_1, H0_1 = [repeat(a', m, 1).*W0 Wadd_nn], [H0; Hadd_nn]
+#     cs = Wcols_modification(X, W0_1, H0_1)
+#     W0_2, H0_2 = repeat(cs', m, 1).* W0_1, H0_1
+#     return W0_2, H0_2, cs, W0_1, H0_1, a, Wadd, Hadd
 # end
