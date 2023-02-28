@@ -43,48 +43,68 @@ function init_H(U0::AbstractArray, S0::AbstractArray, V0::AbstractArray, W0::Abs
     return Hadd_1'
 end
 
-function init_W(X::AbstractArray, W0::AbstractArray, H0::AbstractArray, Hadd::AbstractArray)
-    m, r = size(W0)
-    A, b, _, P, _, _, _, γ, Π = obj_para(X, W0, H0, Hadd)
-    model = Model(optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 0))
-    @variable(model, a[1:r] >= 1e-12, start = 1)
-    @objective(model, Min, a'*A*a+2*b'*a)
-    optimize!(model)
-    α = JuMP.value.(a)
-    Wadd = reshape(Π\(γ-P'*α), m, size(Hadd, 1))
+function init_W(X::AbstractArray, W0::AbstractArray, H0::AbstractArray, Hadd::AbstractArray; α = nothing)
+    m, R = size(W0)
+    K = size(Hadd, 1)
+    A, b, _, invHH, γ = obj_para(X, W0, H0, Hadd)
+    if α === nothing 
+        model = Model(optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 0))
+        @variable(model, a[1:R] >= 1e-12, start = 1)
+        @objective(model, Min, a'*A*a+2*b'*a)
+        optimize!(model)
+        α = JuMP.value.(a)
+    end
+    Wadd = zeros(m, K)
+    for j in 1:K
+        for k1 in 1:K
+            Wadd[:,j] += invHH[j,k1]*γ[k1]
+            for k2 in 1:R
+                Wadd[:,j] -= invHH[j,k1]*α[k2]*Hadd[k1,:]'*H0[k2,:]*W0[:,k2]
+            end
+            
+        end
+    end
     return Wadd, abs.(α)
 end
 
 function obj_para(X::AbstractArray{T}, W0::AbstractArray, H0::AbstractArray, Hadd::AbstractArray) where T
-    m, R = size(W0)
+    R = size(W0, 2)
     K = size(Hadd, 1)
-    ξ = Array{T}(undef, R)
-    Θ = Array{T}(undef, R, R)
-    for q in 1:R
-        ξ[q] = W0[:,q]'*X*H0[q,:]
-        for p in q:R
-            Θ[p,q] = (W0[:,p]'*W0[:,q])*(H0[p,:]'*H0[q,:])
-            Θ[q,p] = Θ[p,q]
+    XHadd = X*Hadd'
+    γ = [XHadd[:,j] for j in 1:K]
+    HH = zeros(K, K)
+    H0Hadd = H0*Hadd'
+    # for k in 1:K, k1 in k:K
+    #     HH[k, k1] = Hadd[k,:]'*Hadd[k1,:]
+    #     HH[k1, k] = HH[k, k1]
+    # end
+    HH = Hadd*Hadd'
+    W0W0 = W0'*W0
+    H0H0 = H0*H0'
+    invHH = inv(HH)
+    A = zeros(R, R)
+    for i in 1:R, j in 1:R
+        # A[i,j] = (W0[:,i]'*W0[:,j])*(H0[i,:]'*H0[j,:])
+        A[i,j] = W0W0[i,j]*H0H0[i,j]
+        for k1 in 1:K, k2 in 1:K
+            # A[i,j] -= invHH[k1,k2]*(H0[i,:]'*Hadd[k1,:])*(W0[:,i]'*W0[:,j])*(H0[j,:]'*Hadd[k2,:])
+            A[i,j] -= invHH[k1,k2]*H0Hadd[i,k1]*(W0W0[i,j])*H0Hadd[j,k2]
+        end
+        A[j,i] = A[i,j]
+    end
+    b =zeros(R)
+    for i in 1:R 
+        b[i] = -W0[:,i]'*(X*H0[i,:])
+        for k1 in 1:K, k2 in 1:K
+            # b[i] += invHH[k1,k2]*H0[i,:]'*Hadd[k1,:]*W0[:,i]'*γ[k2]    
+            b[i] += invHH[k1,k2]*H0Hadd[i,k1]*W0[:,i]'*γ[k2]            
         end
     end
-    Φ = sum(abs2, X)
-    γ = [X*Hadd'...]
-    P0 = []
-    for i in 1:K
-        v = []
-        for r in 1:R 
-            push!(v, (H0[r,:]'*Hadd[i,:])*W0[:,r]')
-        end
-        push!(P0, vcat(v...))
+    C = sum(abs2, X)
+    for k1 in 1:K, k2 in 1:K
+        C -= invHH[k1,k2]*γ[k1]'*γ[k2]            
     end
-    P = hcat(P0...)
-    Π = zeros(K*m, K*m)
-    for k in 0:K-1, k1 in k:K-1
-        Π[k*m+1:(k+1)*m, k1*m+1:(k1+1)*m] = Matrix(Diagonal(Hadd[k+1,:]'*Hadd[k1+1,:]*ones(m)))[:,:]
-        Π[k1*m+1:(k1+1)*m, k*m+1:(k+1)*m] = Π[k*m+1:(k+1)*m, k1*m+1:(k1+1)*m]
-    end
-    A, b, C = Θ-P*(Π\P'), P*(Π\γ)-ξ, Φ-γ'*(Π\γ)
-    return A, b, C, P, Θ, ξ, Φ, γ, Π
+    return A, b, C, invHH, γ
 end
 
 function Wcols_modification(X::AbstractArray{T}, W::AbstractArray, H::AbstractArray) where T
@@ -130,4 +150,55 @@ end
 #     cs = Wcols_modification(X, W0_1, H0_1)
 #     W0_2, H0_2 = repeat(cs', m, 1).* W0_1, H0_1
 #     return W0_2, H0_2, cs, W0_1, H0_1, a, Wadd, Hadd
+# end
+
+
+# function init_W(X::AbstractArray, W0::AbstractArray, H0::AbstractArray, Hadd::AbstractArray)
+#     m, r = size(W0)
+#     A, b, _, P, _, _, _, γ, inv_Π, _ = obj_para(X, W0, H0, Hadd)
+#     model = Model(optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 0))
+#     @variable(model, a[1:r] >= 1e-12, start = 1)
+#     @objective(model, Min, a'*A*a+2*b'*a)
+#     optimize!(model)
+#     α = JuMP.value.(a)
+#     Wadd = reshape(inv_Π*(γ-P'*α), m, size(Hadd, 1))
+#     return Wadd, abs.(α)
+# end
+
+# function obj_para1(X::AbstractArray{T}, W0::AbstractArray, H0::AbstractArray, Hadd::AbstractArray) where T
+#     m, R = size(W0)
+#     K = size(Hadd, 1)
+#     ξ = Array{T}(undef, R)
+#     Θ = Array{T}(undef, R, R)
+#     for q in 1:R
+#         ξ[q] = W0[:,q]'*X*H0[q,:]
+#         for p in q:R
+#             Θ[p,q] = (W0[:,p]'*W0[:,q])*(H0[p,:]'*H0[q,:])
+#             Θ[q,p] = Θ[p,q]
+#         end
+#     end
+#     Φ = sum(abs2, X)
+#     γ = [X*Hadd'...]
+#     P0 = []
+#     for i in 1:K
+#         v = []
+#         for r in 1:R 
+#             push!(v, (H0[r,:]'*Hadd[i,:])*W0[:,r]')
+#         end
+#         push!(P0, vcat(v...))
+#     end
+#     P = hcat(P0...)
+#     inv_Π = zeros(K*m, K*m)
+#     HH = zeros(K, K)
+#      for k in 1:K, k1 in k:K
+#         HH[k, k1] = Hadd[k,:]'*Hadd[k1,:]
+#         HH[k1, k] = HH[k, k1]
+#     end
+#     inv_HH = inv(HH)   
+#     for k in 0:K-1, k1 in k:K-1
+#         inv_Π[k*m+1:(k+1)*m, k1*m+1:(k1+1)*m] = inv_HH[k+1, k1+1]*Matrix{Float64}(I, m, m)
+#         inv_Π[k1*m+1:(k1+1)*m, k*m+1:(k+1)*m] = inv_Π[k*m+1:(k+1)*m, k1*m+1:(k1+1)*m]
+#     end
+#     A, b, C = Θ-P*(inv_Π*P'), P*(inv_Π*γ)-ξ, Φ-γ'*(inv_Π*γ)
+#     return A, b, C, P, Θ, ξ, Φ, γ, inv_Π, HH
 # end
