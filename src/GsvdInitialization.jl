@@ -24,6 +24,7 @@ end
 
 function init_H(U0::AbstractArray, S0::AbstractArray, V0::AbstractArray, W0::AbstractArray, H0::AbstractArray, kadd::Int)
     _, _, Q, D1, D2, R = svd(Matrix(Diagonal(S0)), (U0'*W0)*(H0*V0));
+    QtR = Q'*R
     F = (diag(D1)./diag(D2)).^2
     if kadd < size(U0, 2)
         k0 = kadd
@@ -31,13 +32,14 @@ function init_H(U0::AbstractArray, S0::AbstractArray, V0::AbstractArray, W0::Abs
         while k0 >= 1
             j = findmax(F)[2]
             F[j] = -1
-            h = [Q[:,i]'*R[:,j] for i in axes(Q, 2)]
+            # h = [Q[:,i]'*R[:,j] for i in axes(Q, 2)]
+            h = [QtR[i,j] for i in axes(Q, 2)]
             push!(Hadd_vec, h) 
             k0 -= 1   
         end
         Hadd = hcat(Hadd_vec...)
     else
-        Hadd = Q'*R
+        Hadd = QtR
     end
     Hadd_1 = V0*Hadd
     return Hadd_1'
@@ -46,7 +48,7 @@ end
 function init_W(X::AbstractArray, W0::AbstractArray, H0::AbstractArray, Hadd::AbstractArray; α = nothing)
     m, R = size(W0)
     K = size(Hadd, 1)
-    A, b, _, invHH, γ = obj_para(X, W0, H0, Hadd)
+    A, b, _, invHH, γ, H0Hadd, XHaddt = obj_para(X, W0, H0, Hadd)
     if α === nothing 
         model = Model(optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 0))
         @variable(model, a[1:R] >= 1e-12, start = 1)
@@ -54,14 +56,18 @@ function init_W(X::AbstractArray, W0::AbstractArray, H0::AbstractArray, Hadd::Ab
         optimize!(model)
         α = JuMP.value.(a)
     end
-    Wadd = zeros(m, K)
+    # Wadd = zeros(m, K)
+    Wadd = invHH*XHaddt'
     for j in 1:K
         for k1 in 1:K
-            Wadd[:,j] += invHH[j,k1]*γ[k1]
+            # Wadd[:,j] += invHH[j,k1]*γ[k1]
             for k2 in 1:R
-                Wadd[:,j] -= invHH[j,k1]*α[k2]*Hadd[k1,:]'*H0[k2,:]*W0[:,k2]
+                # Wadd[:,j] -= invHH[j,k1]*α[k2]*Hadd[k1,:]'*H0[k2,:]*W0[:,k2]
+                aaa = invHH[j,k1]*α[k2]*H0Hadd[k2,k1]
+                for i in 1:m 
+                    Wadd[i,j] -= aaa*W0[i,k2]
+                end
             end
-            
         end
     end
     return Wadd, abs.(α)
@@ -70,8 +76,8 @@ end
 function obj_para(X::AbstractArray{T}, W0::AbstractArray, H0::AbstractArray, Hadd::AbstractArray) where T
     R = size(W0, 2)
     K = size(Hadd, 1)
-    XHadd = X*Hadd'
-    γ = [XHadd[:,j] for j in 1:K]
+    XHaddt = X*Hadd'
+    γ = [XHaddt[:,j] for j in 1:K]
     HH = zeros(K, K)
     H0Hadd = H0*Hadd'
     # for k in 1:K, k1 in k:K
@@ -82,42 +88,56 @@ function obj_para(X::AbstractArray{T}, W0::AbstractArray, H0::AbstractArray, Had
     W0W0 = W0'*W0
     H0H0 = H0*H0'
     invHH = inv(HH)
-    A = zeros(R, R)
-    for i in 1:R, j in 1:R
+    # A = zeros(R, R)
+    A = W0W0.*H0H0
+    for i in 1:R, j in i:R
         # A[i,j] = (W0[:,i]'*W0[:,j])*(H0[i,:]'*H0[j,:])
-        A[i,j] = W0W0[i,j]*H0H0[i,j]
+        # A[i,j] = W0W0[i,j]*H0H0[i,j]
         for k1 in 1:K, k2 in 1:K
             # A[i,j] -= invHH[k1,k2]*(H0[i,:]'*Hadd[k1,:])*(W0[:,i]'*W0[:,j])*(H0[j,:]'*Hadd[k2,:])
             A[i,j] -= invHH[k1,k2]*H0Hadd[i,k1]*(W0W0[i,j])*H0Hadd[j,k2]
         end
         A[j,i] = A[i,j]
     end
-    b =zeros(R)
-    for i in 1:R 
-        b[i] = -W0[:,i]'*(X*H0[i,:])
-        for k1 in 1:K, k2 in 1:K
-            # b[i] += invHH[k1,k2]*H0[i,:]'*Hadd[k1,:]*W0[:,i]'*γ[k2]    
-            b[i] += invHH[k1,k2]*H0Hadd[i,k1]*W0[:,i]'*γ[k2]            
-        end
-    end
-    C = sum(abs2, X)
-    for k1 in 1:K, k2 in 1:K
-        C -= invHH[k1,k2]*γ[k1]'*γ[k2]            
-    end
-    return A, b, C, invHH, γ
+    # @show A
+    W0tXH0t = W0'*X*H0'
+    # b = -diag(W0tXH0t)
+    W0XHaddt = W0'*XHaddt
+    # b += diag(H0Hadd*invHH*W0XHaddt')
+
+    b = diag(H0Hadd*invHH*W0XHaddt'-W0tXH0t)
+    # for i in 1:R 
+    #     # b[i] = -W0[:,i]'*(X*H0[i,:])
+    #     for k1 in 1:K, k2 in 1:K
+    #         # b[i] += invHH[k1,k2]*H0[i,:]'*Hadd[k1,:]*W0[:,i]'*γ[k2]    
+    #         # b[i] += invHH[k1,k2]*H0Hadd[i,k1]*W0[:,i]'*γ[k2]   
+    #         # b[i] += invHH[k1,k2]*H0Hadd[i,k1]*W0[:,i]'*XHaddt[:,k2]
+    #         # b[i] += invHH[k1,k2]*H0Hadd[i,k1]*W0XHaddt[i,k2]              
+    #     end
+    # end
+    C = sum(abs2, X)-sum(invHH.*(XHaddt'*XHaddt))
+    # for k1 in 1:K, k2 in 1:K
+    #     C -= invHH[k1,k2]*γ[k1]'*γ[k2]            
+    # end
+    return A, b, C, invHH, γ, H0Hadd, XHaddt
 end
 
 function Wcols_modification(X::AbstractArray{T}, W::AbstractArray, H::AbstractArray) where T
     n = size(W, 2)
     a = Array{T}(undef, n)
     B = Array{T}(undef, n, n)
-    for q in 1:n
-        a[q] = W[:,q]'*X*H[q,:]
-        for p in q:n
-            B[p,q] = (W[:,p]'*W[:,q])*(H[p,:]'*H[q,:])
-            B[q,p] = B[p,q]
-        end
-    end
+    WW, HH = W'*W, H*H' 
+    WtXHt = W'*X*H'
+    # for q in 1:n
+    #     a[q] = WtXH[q,q]
+    #     for p in q:n
+    #         # B[p,q] = (W[:,p]'*W[:,q])*(H[p,:]'*H[q,:])
+    #         B[p,q] = WW[p,q]*HH[p,q]
+    #         B[q,p] = B[p,q]
+    #     end
+    # end
+    a = diag(WtXHt)
+    B = WW.*HH
     model = Model(optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 0))
     @variable(model, b[1:n] >= 1e-12, start = 1)
     @objective(model, Min, b'*B*b-2*a'*b)
