@@ -18,7 +18,7 @@ function gsvdinit(X::AbstractArray, W0::AbstractArray, H0::AbstractArray, kadd::
     Wadd_nn, Hadd_nn = NMF.nndsvd(X, kadd, initdata = (U = Wadd, S = ones(kadd), V = Hadd'))
     W0_1, H0_1 = [repeat(a', m, 1).*W0 Wadd_nn], [H0; Hadd_nn]
     cs = Wcols_modification(X, W0_1, H0_1)
-    W0_2, H0_2 = repeat(cs', m, 1).* W0_1, H0_1
+    W0_2, H0_2 = repeat(cs', m, 1).*W0_1, H0_1
     return W0_2, H0_2, cs, W0_1, H0_1, a, Wadd, Hadd
 end
 
@@ -33,11 +33,14 @@ function init_H(U0::AbstractArray, S0::AbstractArray, V0::AbstractArray, W0::Abs
             j = findmax(F)[2]
             F[j] = -1
             # h = [Q[:,i]'*R[:,j] for i in axes(Q, 2)]
-            h = [QtR[i,j] for i in axes(Q, 2)]
-            push!(Hadd_vec, h) 
+            # h = [QtR[i,j] for i in axes(Q, 2)]
+            # h = copy(QtR[:,j])
+            # push!(Hadd_vec, h) 
+            push!(Hadd_vec, j) 
             k0 -= 1   
         end
-        Hadd = hcat(Hadd_vec...)
+        # Hadd = hcat(Hadd_vec...)
+        Hadd = QtR[:,h]
     else
         Hadd = QtR
     end
@@ -48,7 +51,7 @@ end
 function init_W(X::AbstractArray, W0::AbstractArray, H0::AbstractArray, Hadd::AbstractArray; α = nothing)
     m, R = size(W0)
     K = size(Hadd, 1)
-    A, b, _, invHH, γ, H0Hadd, XHaddt = obj_para(X, W0, H0, Hadd)
+    A, b, _, invHH, H0Hadd, XHaddt = obj_para(X, W0, H0, Hadd)
     if α === nothing 
         model = Model(optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 0))
         @variable(model, a[1:R] >= 1e-12, start = 1)
@@ -57,28 +60,30 @@ function init_W(X::AbstractArray, W0::AbstractArray, H0::AbstractArray, Hadd::Ab
         α = JuMP.value.(a)
     end
     # Wadd = zeros(m, K)
-    Wadd = invHH*XHaddt'
-    for j in 1:K
-        for k1 in 1:K
-            # Wadd[:,j] += invHH[j,k1]*γ[k1]
-            for k2 in 1:R
-                # Wadd[:,j] -= invHH[j,k1]*α[k2]*Hadd[k1,:]'*H0[k2,:]*W0[:,k2]
-                aaa = invHH[j,k1]*α[k2]*H0Hadd[k2,k1]
-                for i in 1:m 
-                    Wadd[i,j] -= aaa*W0[i,k2]
-                end
-            end
-        end
-    end
+    # Wadd = XHaddt*invHH
+    Wadd = XHaddt*invHH-W0*Diagonal(α)*H0Hadd*invHH
+    # for j in 1:K
+    #     for k1 in 1:K
+    #         # Wadd[:,j] += invHH[j,k1]*γ[k1]
+    #         for k2 in 1:R
+    #             # Wadd[:,j] -= invHH[j,k1]*α[k2]*Hadd[k1,:]'*H0[k2,:]*W0[:,k2]
+    #             aaa = invHH[j,k1]*α[k2]*H0Hadd[k2,k1]
+        
+    #             for i in 1:m 
+    #                 Wadd[i,j] -= aaa*W0[i,k2]
+    #             end
+    #         end
+    #     end
+    # end
     return Wadd, abs.(α)
 end
 
 function obj_para(X::AbstractArray{T}, W0::AbstractArray, H0::AbstractArray, Hadd::AbstractArray) where T
-    R = size(W0, 2)
-    K = size(Hadd, 1)
+    # R = size(W0, 2)
+    # K = size(Hadd, 1)
     XHaddt = X*Hadd'
-    γ = [XHaddt[:,j] for j in 1:K]
-    HH = zeros(K, K)
+    # γ = [XHaddt[:,j] for j in 1:K]
+    # HH = zeros(K, K)
     H0Hadd = H0*Hadd'
     # for k in 1:K, k1 in k:K
     #     HH[k, k1] = Hadd[k,:]'*Hadd[k1,:]
@@ -89,16 +94,17 @@ function obj_para(X::AbstractArray{T}, W0::AbstractArray, H0::AbstractArray, Had
     H0H0 = H0*H0'
     invHH = inv(HH)
     # A = zeros(R, R)
-    A = W0W0.*H0H0
-    for i in 1:R, j in i:R
-        # A[i,j] = (W0[:,i]'*W0[:,j])*(H0[i,:]'*H0[j,:])
-        # A[i,j] = W0W0[i,j]*H0H0[i,j]
-        for k1 in 1:K, k2 in 1:K
-            # A[i,j] -= invHH[k1,k2]*(H0[i,:]'*Hadd[k1,:])*(W0[:,i]'*W0[:,j])*(H0[j,:]'*Hadd[k2,:])
-            A[i,j] -= invHH[k1,k2]*H0Hadd[i,k1]*(W0W0[i,j])*H0Hadd[j,k2]
-        end
-        A[j,i] = A[i,j]
-    end
+    # A = W0W0.*H0H0
+    A = W0W0.*(H0H0-H0Hadd*invHH*H0Hadd')
+    # for i in 1:R, j in i:R
+    #     # A[i,j] = (W0[:,i]'*W0[:,j])*(H0[i,:]'*H0[j,:])
+    #     # A[i,j] = W0W0[i,j]*H0H0[i,j]
+    #     for k1 in 1:K, k2 in 1:K
+    #         # A[i,j] -= invHH[k1,k2]*(H0[i,:]'*Hadd[k1,:])*(W0[:,i]'*W0[:,j])*(H0[j,:]'*Hadd[k2,:])
+    #         A[i,j] -= invHH[k1,k2]*H0Hadd[i,k1]*(W0W0[i,j])*H0Hadd[j,k2]
+    #     end
+    #     A[j,i] = A[i,j]
+    # end
     # @show A
     W0tXH0t = W0'*X*H0'
     # b = -diag(W0tXH0t)
@@ -119,7 +125,7 @@ function obj_para(X::AbstractArray{T}, W0::AbstractArray, H0::AbstractArray, Had
     # for k1 in 1:K, k2 in 1:K
     #     C -= invHH[k1,k2]*γ[k1]'*γ[k2]            
     # end
-    return A, b, C, invHH, γ, H0Hadd, XHaddt
+    return A, b, C, invHH, H0Hadd, XHaddt
 end
 
 function Wcols_modification(X::AbstractArray{T}, W::AbstractArray, H::AbstractArray) where T
