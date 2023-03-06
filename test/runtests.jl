@@ -32,16 +32,4 @@ using FileIO, LinearAlgebra, NMF
     β = Wcols_modification(X, repeat(β0', size(W, 1)).*W, H)
     @test β.*β0 ≈ ones(3)
 
-    # W, H = load("test/WHtest1.jld2")["WH"]
-    # X = W*H
-    # # _W0, _H0 = NMF.randinit(X, 2)
-    # _W0, _H0 = NMF.nndsvd(X, 2, initdata = svd(X))
-    # X_nmf_0 = NMF.solve!(NMF.CoordinateDescent{Float64}(), X, _W0, _H0)
-    # W0, H0 = X_nmf_0.W, X_nmf_0.H
-    # kadd = 1
-    # W0_2, H0_2, cs, W0_1, H0_1, a, Wadd, Hadd = gsvdinit(X, W0, H0, kadd)
-    # X_nmf_1 = NMF.solve!(NMF.CoordinateDescent{Float64}(), X, copy(W0_2), copy(H0_2))
-    # W1, H1 = X_nmf_1.W, X_nmf_1.H
-    # save("test/WHtest_res_1.jld2", Dict("W0H0" => (W0,H0), "WaddHadd" => (Wadd,Hadd), "W0_1H0_1" => (W0_1,H0_1), "W0_2H0_2" => (W0_2,H0_2), "W1H1" => (W1,H1)))
-
 end
