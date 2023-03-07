@@ -1,7 +1,7 @@
 using GsvdInitialization
 using Test
 
-using FileIO, LinearAlgebra, NMF
+using LinearAlgebra, NMF
 
 @testset "GsvdInitialization.jl" begin
     # Write your tests here.
