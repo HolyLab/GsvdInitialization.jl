@@ -19,7 +19,7 @@ function gsvdinit(X::AbstractArray, W0::AbstractArray, H0::AbstractArray, kadd::
     W0_1, H0_1 = [repeat(a', m, 1).*W0 Wadd_nn], [H0; Hadd_nn]
     cs = Wcols_modification(X, W0_1, H0_1)
     W0_2, H0_2 = repeat(cs', m, 1).*W0_1, H0_1
-    return W0_2, H0_2, cs, W0_1, H0_1, a, Wadd, Hadd
+    return abs.(W0_2), abs.(H0_2)
 end
 
 function init_H(U0::AbstractArray, S0::AbstractArray, V0::AbstractArray, W0::AbstractArray, H0::AbstractArray, kadd::Int)
@@ -44,8 +44,7 @@ function init_H(U0::AbstractArray, S0::AbstractArray, V0::AbstractArray, W0::Abs
 end
 
 function init_W(X::AbstractArray{T}, W0::AbstractArray{T}, H0::AbstractArray{T}, Hadd::AbstractArray{T}; α = nothing) where T
-    m, R = size(W0)
-    K = size(Hadd, 1)
+    R = size(W0, 2)
     A, b, _, invHH, H0Hadd, XHaddt = obj_para(X, W0, H0, Hadd)
     if α === nothing 
         model = Model(optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 0))
