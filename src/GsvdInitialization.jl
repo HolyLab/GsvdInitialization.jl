@@ -3,46 +3,59 @@ module GsvdInitialization
 using LinearAlgebra, NMF
 using JuMP, Ipopt
 
-export gsvdinit,
+export overnmfinit,
+       gsvdinit,
        init_H,
        init_W,
        Wcols_modification
 
-function gsvdinit(X::AbstractArray, W0::AbstractArray, H0::AbstractArray, kadd::Int; initdata = nothing)
-    if kadd == 0
-        return W0, H0
-    else
-        m, n = size(W0)
-        kadd <= n || throw(ArgumentError("# of extra columns must less than 1st NMF components"))
-        U, S, V = initdata === nothing ? svd(X) : (initdata.U, initdata.S, initdata.V)
-        U0, S0, V0 = U[:,1:n], S[1:n], V[:,1:n]
-        Hadd = init_H(U0, S0, V0, W0, H0, kadd)
-        Wadd, a = init_W(X, W0, H0, Hadd)
+function overnmfinit(X::AbstractArray, W0::AbstractArray, H0::AbstractArray, kadd::Int; initdata = nothing)
+        m = size(W0, 1) 
+        Wadd, Hadd, a = gsvdinit(X, W0, H0, kadd; initdata = initdata)
         Wadd_nn, Hadd_nn = NMF.nndsvd(X, kadd, initdata = (U = Wadd, S = ones(kadd), V = Hadd'))
         W0_1, H0_1 = [repeat(a', m, 1).*W0 Wadd_nn], [H0; Hadd_nn]
         cs = Wcols_modification(X, W0_1, H0_1)
         W0_2, H0_2 = repeat(cs', m, 1).*W0_1, H0_1
         return abs.(W0_2), abs.(H0_2)
+end
+
+function gsvdinit(X::AbstractArray, W0::AbstractArray, H0::AbstractArray, kadd::Int; initdata = nothing)
+    if kadd == 0
+        return W0, H0
+    else
+        n = size(W0, 2)
+        kadd <= n || throw(ArgumentError("# of extra columns must less than 1st NMF components"))
+        U, S, V = initdata === nothing ? svd(X) : (initdata.U, initdata.S, initdata.V)
+        U0, S0, V0 = U[:,1:n], S[1:n], V[:,1:n]
+        Hadd = init_H(U0, S0, V0, W0, H0, kadd)
+        Wadd, a = init_W(X, W0, H0, Hadd)
+        return Wadd, Hadd, a
+        # Wadd_nn, Hadd_nn = NMF.nndsvd(X, kadd, initdata = (U = Wadd, S = ones(kadd), V = Hadd'))
+        # W0_1, H0_1 = [repeat(a', m, 1).*W0 Wadd_nn], [H0; Hadd_nn]
+        # cs = Wcols_modification(X, W0_1, H0_1)
+        # W0_2, H0_2 = repeat(cs', m, 1).*W0_1, H0_1
+        # return abs.(W0_2), abs.(H0_2)
     end
 end
 
 function init_H(U0::AbstractArray, S0::AbstractArray, V0::AbstractArray, W0::AbstractArray, H0::AbstractArray, kadd::Int)
     _, _, Q, D1, D2, R = svd(Matrix(Diagonal(S0)), (U0'*W0)*(H0*V0));
-    # QtR = Q'*R
     inv_RQt = inv(R*Q')
+    HHH = inv_RQt
     F = (diag(D1)./diag(D2)).^2
+    # @show F
     if kadd < size(U0, 2)
         k0 = kadd
-        H_index = []
+        H_index = Int[]
         while k0 >= 1
             j = findmax(F)[2]
             F[j] = -1
             push!(H_index, j) 
             k0 -= 1   
         end
-        Hadd = inv_RQt[:,H_index]
+        Hadd = HHH[:,H_index]
     else
-        Hadd = inv_RQt
+        Hadd = HHH
     end
     Hadd_1 = V0*Hadd
     return Hadd_1'
