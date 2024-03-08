@@ -9,12 +9,12 @@ export overnmfinit,
        init_W,
        Wcols_modification
 
-function overnmfinit(X::AbstractArray, W0::AbstractArray, H0::AbstractArray, kadd::Int; initdata = nothing)
+function overnmfinit(X::AbstractArray, W0::AbstractArray, H0::AbstractArray, kadd::Int; initdata = nothing, n::Int = size(W0, 2))
     if kadd == 0
         return W0, H0
     else
         m = size(W0, 1) 
-        Wadd, Hadd, a = gsvdinit(X, W0, H0, kadd; initdata = initdata)
+        Wadd, Hadd, a = gsvdinit(X, W0, H0, kadd; initdata = initdata, n = n)
         Wadd_nn, Hadd_nn = NMF.nndsvd(X, kadd, initdata = (U = Wadd, S = ones(kadd), V = Hadd'))
         W0_1, H0_1 = [repeat(a', m, 1).*W0 Wadd_nn], [H0; Hadd_nn]
         cs = Wcols_modification(X, W0_1, H0_1)
@@ -23,8 +23,9 @@ function overnmfinit(X::AbstractArray, W0::AbstractArray, H0::AbstractArray, kad
     end
 end
 
-function gsvdinit(X::AbstractArray, W0::AbstractArray, H0::AbstractArray, kadd::Int; initdata = nothing)
-        n = size(W0, 2)
+function gsvdinit(X::AbstractArray, W0::AbstractArray, H0::AbstractArray, kadd::Int; initdata = nothing, n::Int = size(W0, 2))
+        # n = size(W0, 2)+kadd
+        # @show n
         kadd <= n || throw(ArgumentError("# of extra columns must less than 1st NMF components"))
         U, S, V = initdata === nothing ? svd(X) : (initdata.U, initdata.S, initdata.V)
         U0, S0, V0 = U[:,1:n], S[1:n], V[:,1:n]
@@ -35,6 +36,7 @@ end
 
 function init_H(U0::AbstractArray, S0::AbstractArray, V0::AbstractArray, W0::AbstractArray, H0::AbstractArray, kadd::Int)
     _, _, Q, D1, D2, R = svd(Matrix(Diagonal(S0)), (U0'*W0)*(H0*V0));
+    # _, _, Q, D1, D2, R = svd(Matrix(Diagonal(S0)), W0*(H0*V0));
     inv_RQt = inv(R*Q')
     HHH = inv_RQt
     F = (diag(D1)./diag(D2)).^2
