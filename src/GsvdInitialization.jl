@@ -9,17 +9,18 @@ export gsvdnmf,
 function gsvdnmf(X, ncomponents::Pair{Int,Int}; tol_final=1e-4, tol_intermediate=sqrt(tol_final), W0=nothing, H0=nothing, kwargs...)
     f = svd(X)
     if W0 === nothing && H0 === nothing
-        W0, H0 = NMF.nndsvd(X, ncomponents[2], initdata=f)
+        W0, H0 = NMF.nndsvd(X, ncomponents[1], initdata=f)
     end
-    result_initial = nnmf(X, ncomponents[2]; kwargs..., init=:custom, tol=tol_intermediate, W0=copy(W0), H0=copy(H0))
+    result_initial = nnmf(X, ncomponents[1]; kwargs..., init=:custom, tol=tol_intermediate, W0=copy(W0), H0=copy(H0))
     W_initial, H_initial = result_initial.W, result_initial.H
     kadd = ncomponents[2] - ncomponents[1]
     kadd >= 0 || throw(ArgumentError("The number of components to add must be non-negative."))
     kadd <= ncomponents[2] || throw(ArgumentError("The number of components to add must be less than the total number of components."))
     W_recover, H_recover = gsvdrecover(X, copy(W_initial), copy(H_initial), kadd, initdata=f)
-    result_recover = nnmf(X, ncomponents[1]; kwargs..., init=:custom, tol=tol_final, W0=copy(W_recover), H0=copy(H_recover))
-    return result_recover
+    result_recover = nnmf(X, ncomponents[2]; kwargs..., init=:custom, tol=tol_final, W0=copy(W_recover), H0=copy(H_recover))
+    return result_recover.W, result_recover.H
 end
+gsvdnmf(X, ncomponents::Integer; kwargs...) = nmfmerge(X, ncomponents => ncomponents+1; kwargs...)
     
 function gsvdrecover(X::AbstractArray, W0::AbstractArray, H0::AbstractArray, kadd::Int; initdata = nothing)
     if kadd == 0

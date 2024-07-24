@@ -24,12 +24,13 @@ julia>] add GsvdInitialization;
 
 ## Functions
 
-**gsvdnmf**(X, ncomponents::Pair{Int,Int}; tol_final=1e-4, tol_intermediate=tol_final, W0=nothing, H0=nothing, kwargs...)
+W, H = **gsvdnmf**(X, ncomponents::Pair{Int,Int}; tol_final=1e-4, tol_intermediate=tol_final, W0=nothing, H0=nothing, kwargs...)
+
 This function performs "GSVD-NMF" on 2D data matrix ``X``.
 
 Arguments:
 
-``ncomponents::Pair{Int,Int}``: in the form of ``n1 => n2``, augment from ``n1`` components to ``n2``components, where ``n1`` is the number of components for initial NMF (under-complete NMF), and ``n2`` is the number of components for final NMF.
+``ncomponents::Pair{Int,Int}``: in the form of ``n1 => n2``, augments from ``n1`` components to ``n2``components, where ``n1`` is the number of components for initial NMF (under-complete NMF), and ``n2`` is the number of components for final NMF.
 
 Alternatively, ``ncomponents`` can be an integer denoting the initial number of components (under-complete NMF). In this case, ``gsvdnmf`` defaults to augment components on initial NMF solution by 1.
 
@@ -49,21 +50,31 @@ Other keywords arguments are passed to ``NMF.nnmf``.
 
 -----
 
-**gsvdrecover**(X, W0, H0, kadd; initdata = nothing)
+Wadd, Hadd, S = **gsvdrecover**(X, W0, H0, kadd; initdata = nothing)
+
+Given NMF solution ``W0`` and ``H``, this function recovers components for NMF solution. 
+
+Outputs:
+
+``Wadd``: augmented NMF solution
+
+``Hadd``: augmented NMF solution
+
+``S``: related generalized singular value
 
 Arguments:
 
-``X``: 
+``X``: non-nagetive 2D data matrix
 
-``W0``: 
+``W0``: NMF solution
 
-``H0``: 
+``H0``: NMF solution
 
-``kadd``: 
+``kadd``: number of new components
 
 Keyword arguments:
 
-``initdata``: 
+``initdata``: the svd of ``X``
 
 -----
 
