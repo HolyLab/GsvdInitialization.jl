@@ -9,11 +9,14 @@ NMF = "6ef6ca0d-6ad7-5ff6-b225-e928bfa0a386"
 NonNegLeastSquares = "b7351bd1-99d9-5c5d-8786-f205a815c4d7"
 
 [compat]
+LinearAlgebra = "1"
+NonNegLeastSquares = "0.4"
 NMF = "1"
-julia = "1"
+julia = "1.10"
 
 [extras]
+NMF = "6ef6ca0d-6ad7-5ff6-b225-e928bfa0a386"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [targets]
-test = ["Test"]
+test = ["NMF", "Test"]
