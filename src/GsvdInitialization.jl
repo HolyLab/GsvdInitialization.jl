@@ -6,7 +6,7 @@ using NonNegLeastSquares
 export gsvdnmf,
        gsvdrecover
 
-function gsvdnmf(X, ncomponents::Pair{Int,Int}; tol_final=1e-4, tol_intermediate=sqrt(tol_final), W0=nothing, H0=nothing, kwargs...)
+function gsvdnmf(X, ncomponents::Pair{Int,Int}; tol_final=1e-4, tol_intermediate=1e-4, W0=nothing, H0=nothing, kwargs...)
     f = svd(X)
     if W0 === nothing && H0 === nothing
         W0, H0 = NMF.nndsvd(X, ncomponents[1], initdata=f)
