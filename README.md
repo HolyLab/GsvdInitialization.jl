@@ -19,6 +19,7 @@ julia>] add GsvdInitialization;
 
 Generate grouth truth
 ```julia
+julia> include("demo/generate_ground_truth.jl")
 julia> W_GT, H_GT = generate_ground_truth();
 julia> X = W_GT*H_GT;
 ```
