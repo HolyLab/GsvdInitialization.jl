@@ -32,6 +32,7 @@ julia> sum(abs2, X-result_hals.W*result_hals.H)/sum(abs2, X)
 ```
 
 ![Sample Figure](demo/ResultHals.png)
+<img src="demo/ResultHals.png" alt="Sample Figure" width="600"/>
 
 ```julia
 julia> Wgsvd, Hgsvd = gsvdnmf(X, 9=>10; alg = :cd, maxiter = 10^12);
