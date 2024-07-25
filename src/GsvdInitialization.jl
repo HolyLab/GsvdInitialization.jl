@@ -49,7 +49,8 @@ function init_H(U0::AbstractArray, S0::AbstractArray, V0::AbstractArray, W0::Abs
     _, _, Q, D1, D2, R = svd(Matrix(Diagonal(S0)), (U0'*W0)*(H0*V0));
     inv_RQt = inv(R*Q')
     r0 = size(U0, 2)
-    k = findfirst(x->x!=0, D2[1,:])-1
+    k = findfirst(x->x!=0, D2[1,:])
+    k = (k === nothing) ? r0 : k-1
     kadd >= k || @warn "kadd is less than rank deficiency of W0*H0."
     F = (diag(D1[k+1:r0, k+1:r0])./diag(D2[1:r0-k,k+1:r0])).^2
     Λ = vcat(fill(Inf, k), F)
