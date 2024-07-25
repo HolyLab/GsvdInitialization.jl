@@ -24,12 +24,12 @@ using LinearAlgebra, NMF
     Hadd = rand(2, 8)
     A, b, C, HH, γ = GsvdInitialization.obj_para(X, W0, H0, Hadd)
     a = rand(4)
-    Wadd, a = init_W(X, W0, H0, Hadd, α = a)
+    Wadd, a = GsvdInitialization.init_W(X, W0, H0, Hadd, α = a)
     E = a'*A*a+2*b'*a+C
     @test abs(E-sum(abs2, X-[repeat(a', size(W0, 1)).*W0 Wadd]*[H0;Hadd])) <= 1e-12
 
     β0 = rand(3)
-    β = Wcols_modification(X, repeat(β0', size(W, 1)).*W, H)
+    β = GsvdInitialization.Wcols_modification(X, repeat(β0', size(W, 1)).*W, H)
     @test β.*β0 ≈ ones(3)
 
 end
