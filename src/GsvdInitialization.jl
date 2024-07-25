@@ -20,7 +20,7 @@ function gsvdnmf(X, ncomponents::Pair{Int,Int}; tol_final=1e-4, tol_intermediate
     result_recover = nnmf(X, ncomponents[2]; kwargs..., init=:custom, tol=tol_final, W0=copy(W_recover), H0=copy(H_recover))
     return result_recover.W, result_recover.H
 end
-gsvdnmf(X, ncomponents::Integer; kwargs...) = nmfmerge(X, ncomponents => ncomponents+1; kwargs...)
+gsvdnmf(X, ncomponents::Integer; kwargs...) = gsvdnmf(X, ncomponents-1 => ncomponents; kwargs...)
     
 function gsvdrecover(X::AbstractArray, W0::AbstractArray, H0::AbstractArray, kadd::Int; initdata = nothing)
     if kadd == 0

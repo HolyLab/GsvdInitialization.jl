@@ -17,7 +17,8 @@ Install the package
 julia>] add GsvdInitialization;
 ```
 
-Generate grouth truth
+Generating grouth truth with 10 features.
+
 ```julia
 julia> include("demo/generate_ground_truth.jl")
 julia> W_GT, H_GT = generate_ground_truth();
@@ -26,19 +27,28 @@ julia> X = W_GT*H_GT;
 
 <img src="demo/GroundTruth.png" alt="Sample Figure" width="400"/>
 
+Running standard NMF(HALS) using NNDSVD as initialization on X.
+
 ```julia
 julia> result_hals = nnmf(X, 10; init=:nndsvd, alg = :cd, tol = 1e-4, maxiter=10^12, initdata = svd(X));
 julia> sum(abs2, X-result_hals.W*result_hals.H)/sum(abs2, X)
 0.0999994991270576
 ```
+The result is given by
 
 <img src="demo/ResultHals.png" alt="Sample Figure" width="400"/>
+
+This factorization is not perfect as two components are same and two features share one component.
+Then, running GSVD-NMF on X (also using NNSVD as initialization).
 
 ```julia
 julia> Wgsvd, Hgsvd = gsvdnmf(X, 9=>10; alg = :cd, maxiter = 10^12);
 julia> sum(abs2, X-Wgsvd*Hgsvd)/sum(abs2, X)
 1.2322603074132593e-10
 ```
+
+Gsvd-NMF factorizes the gound truth well based on the comparison between relative fitting errors and figures.
+
 
 <img src="demo/ResultGsvdNMF.png" alt="Sample Figure" width="400"/>
 
