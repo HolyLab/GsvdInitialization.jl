@@ -3,7 +3,7 @@ using Test
 
 using LinearAlgebra, NMF
 
-include(joinpath(pwd(), "demo/generate_ground_truth.jl"))
+include(joinpath(dirname(@__DIR__), "demo/generate_ground_truth.jl"))
 
 W_GT, H_GT = generate_ground_truth()
 
