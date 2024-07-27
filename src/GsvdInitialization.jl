@@ -1,49 +1,55 @@
 module GsvdInitialization
 
-using LinearAlgebra, NMF
+using LinearAlgebra, NMF, TSVD
 using NonNegLeastSquares
 
 export gsvdnmf,
        gsvdrecover
 
-function gsvdnmf(X, ncomponents::Pair{Int,Int}; tol_final=1e-4, tol_intermediate=1e-4, W0=nothing, H0=nothing, kwargs...)
-    f = svd(X)
-    if W0 === nothing && H0 === nothing
-        W0, H0 = NMF.nndsvd(X, ncomponents[1], initdata=f)
-    end
-    result_initial = nnmf(X, ncomponents[1]; kwargs..., init=:custom, tol=tol_intermediate, W0=copy(W0), H0=copy(H0))
-    W_initial, H_initial = result_initial.W, result_initial.H
-    kadd = ncomponents[2] - ncomponents[1]
+function gsvdnmf(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, f::Union{Factorization, Tuple}; 
+                 n2 = size(first(f), 2), 
+                 tol_final=1e-4, 
+                 tol_intermediate=1e-4, 
+                 kwargs...)
+    n1 = size(W, 2)
+    kadd = n2 - n1
     kadd >= 0 || throw(ArgumentError("The number of components to add must be non-negative."))
-    kadd <= ncomponents[2] || throw(ArgumentError("The number of components to add must be less than the total number of components."))
-    W_recover, H_recover = gsvdrecover(X, copy(W_initial), copy(H_initial), kadd, initdata=f)
-    result_recover = nnmf(X, ncomponents[2]; kwargs..., init=:custom, tol=tol_final, W0=copy(W_recover), H0=copy(H_recover))
-    return result_recover.W, result_recover.H
-end
-gsvdnmf(X, ncomponents::Integer; kwargs...) = gsvdnmf(X, ncomponents-1 => ncomponents; kwargs...)
-    
-function gsvdrecover(X::AbstractArray, W0::AbstractArray, H0::AbstractArray, kadd::Int; initdata = nothing)
+    kadd <= n1 || throw(ArgumentError("The number of components to add must be less than initial number of components."))
+    result_initial = nnmf(X, n1; kwargs..., init=:custom, tol=tol_intermediate, W0=copy(W), H0=copy(H))
+    W_initial, H_initial = result_initial.W, result_initial.H
     if kadd == 0
-        return W0, H0
+        return W_initial, H_initial
     else
-        m = size(W0, 1) 
-        Wadd, Hadd, a, Λ = components_recover(X, W0, H0, kadd; initdata = initdata)
+        W_recover, H_recover = gsvdrecover(X, copy(W_initial), copy(H_initial), kadd, f)
+        result_recover = nnmf(X, n2; kwargs..., init=:custom, tol=tol_final, W0=copy(W_recover), H0=copy(H_recover))
+        return result_recover.W, result_recover.H
+    end
+end
+gsvdnmf(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, n2::Int; kwargs...) = gsvdnmf(X, W, H, tsvd(X, n2); kwargs...)
+
+function gsvdnmf(X::AbstractMatrix, ncomponents::Pair{Int,Int}; kwargs...)
+    n1, n2 = ncomponents
+    f = tsvd(X, n2)
+    W0, H0 = NMF.nndsvd(X, n1; initdata = (U = f[1], S = f[2], V = f[3]))
+    return gsvdnmf(X, W0, H0, f; kwargs...)
+end
+gsvdnmf(X::AbstractMatrix, ncomponents_final::Integer; kwargs...) = gsvdnmf(X, ncomponents_final-1 => ncomponents_final; kwargs...)
+    
+function gsvdrecover(X::AbstractArray, W0::AbstractArray, H0::AbstractArray, kadd::Int, f::Union{Factorization, Tuple})
+    m, n = size(W0)
+    kadd <= n || throw(ArgumentError("# of extra columns must less than 1st NMF components"))
+    if kadd == 0
+        return W0, H0, 0
+    else
+        U0, S0, V0 = f[1][:,1:n], f[2][1:n], f[3][:,1:n]
+        Hadd, Λ = init_H(U0, S0, V0, W0, H0, kadd)
+        Wadd, a = init_W(X, W0, H0, Hadd)
         Wadd_nn, Hadd_nn = NMF.nndsvd(X, kadd, initdata = (U = Wadd, S = ones(kadd), V = Hadd'))
         W0_1, H0_1 = [repeat(a', m, 1).*W0 Wadd_nn], [H0; Hadd_nn]
         cs = Wcols_modification(X, W0_1, H0_1)
         W0_2, H0_2 = repeat(cs', m, 1).*W0_1, H0_1
         return abs.(W0_2), abs.(H0_2), Λ
     end
-end
-
-function components_recover(X::AbstractArray, W0::AbstractArray, H0::AbstractArray, kadd::Int; initdata = nothing)
-    n = size(W0, 2)
-    kadd <= n || throw(ArgumentError("# of extra columns must less than 1st NMF components"))
-    U, S, V = initdata === nothing ? svd(X) : (initdata.U, initdata.S, initdata.V)
-    U0, S0, V0 = U[:,1:n], S[1:n], V[:,1:n]
-    Hadd, Λ = init_H(U0, S0, V0, W0, H0, kadd)
-    Wadd, a = init_W(X, W0, H0, Hadd)
-    return Wadd, Hadd, a, Λ
 end
 
 function init_H(U0::AbstractArray, S0::AbstractArray, V0::AbstractArray, W0::AbstractArray, H0::AbstractArray, kadd::Int)
