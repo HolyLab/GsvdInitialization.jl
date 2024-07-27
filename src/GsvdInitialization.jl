@@ -37,7 +37,7 @@ function gsvdrecover(X::AbstractArray, W0::AbstractArray, H0::AbstractArray, kad
 end
 
 function components_recover(X::AbstractArray, W0::AbstractArray, H0::AbstractArray, kadd::Int; initdata = nothing)
-    n::Int = size(W0, 2)
+    n = size(W0, 2)
     kadd <= n || throw(ArgumentError("# of extra columns must less than 1st NMF components"))
     U, S, V = initdata === nothing ? svd(X) : (initdata.U, initdata.S, initdata.V)
     U0, S0, V0 = U[:,1:n], S[1:n], V[:,1:n]
