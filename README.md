@@ -69,7 +69,8 @@ Arguments:
 
 ``ncomponents::Pair{Int,Int}``: in the form of ``n1 => n2``, augments from ``n1`` components to ``n2``components, where ``n1`` is the number of components for initial NMF (under-complete NMF), and ``n2`` is the number of components for final NMF.
 
-Alternatively, ``ncomponents`` can be an integer denoting the initial number of components (under-complete NMF). In this case, ``gsvdnmf`` defaults to augment components on initial NMF solution by 1.
+Alternatively, ``ncomponents`` can be an integer denoting the number of components for final NMF. 
+In this case, ``gsvdnmf`` defaults to augment components on initial NMF solution by 1.
 
 Keyword arguments:
 
