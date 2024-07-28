@@ -13,7 +13,7 @@ See also [NMFMerge](https://github.com/HolyLab/NMFMerge.jl) for the converse ope
 
 Demo:
 
-Install the package
+Install and load packages
 ```julia
 julia>] add GsvdInitialization;
 ```
