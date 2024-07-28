@@ -13,6 +13,8 @@ See also [NMFMerge](https://github.com/HolyLab/NMFMerge.jl) for the converse ope
 
 Demo:
 
+To run this demo, NMF.jl and LinearAlgebra.jl are also required.
+
 Install and load packages
 ```julia
 julia>] add GsvdInitialization;
