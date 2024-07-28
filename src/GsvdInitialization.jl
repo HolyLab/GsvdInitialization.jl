@@ -6,7 +6,7 @@ using NonNegLeastSquares
 export gsvdnmf,
        gsvdrecover
 
-function gsvdnmf(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, f::Tuple; 
+function gsvdnmf(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, f; 
                  n2 = size(first(f), 2), 
                  tol_final=1e-4, 
                  tol_intermediate=1e-4, 
