@@ -6,7 +6,7 @@ using NonNegLeastSquares
 export gsvdnmf,
        gsvdrecover
 
-function gsvdnmf(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, f::Union{Factorization, Tuple}; 
+function gsvdnmf(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, f::Tuple; 
                  n2 = size(first(f), 2), 
                  tol_final=1e-4, 
                  tol_intermediate=1e-4, 
@@ -15,6 +15,7 @@ function gsvdnmf(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, f::Uni
     kadd = n2 - n1
     kadd >= 0 || throw(ArgumentError("The number of components to add must be non-negative."))
     kadd <= n1 || throw(ArgumentError("The number of components to add must be less than initial number of components."))
+    size(first(f), 2) >= n1 || throw(ArgumentError("SVD components number cannot be less than initial number of components."))
     result_initial = nnmf(X, n1; kwargs..., init=:custom, tol=tol_intermediate, W0=copy(W), H0=copy(H))
     W_initial, H_initial = result_initial.W, result_initial.H
     if kadd == 0
@@ -35,7 +36,7 @@ function gsvdnmf(X::AbstractMatrix, ncomponents::Pair{Int,Int}; kwargs...)
 end
 gsvdnmf(X::AbstractMatrix, ncomponents_final::Integer; kwargs...) = gsvdnmf(X, ncomponents_final-1 => ncomponents_final; kwargs...)
     
-function gsvdrecover(X::AbstractArray, W0::AbstractArray, H0::AbstractArray, kadd::Int, f::Union{Factorization, Tuple})
+function gsvdrecover(X::AbstractArray, W0::AbstractArray, H0::AbstractArray, kadd::Int, f::Tuple)
     m, n = size(W0)
     kadd <= n || throw(ArgumentError("# of extra columns must less than 1st NMF components"))
     if kadd == 0

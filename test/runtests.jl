@@ -11,8 +11,8 @@ W_GT, H_GT = generate_ground_truth()
     W = W_GT
     H = H_GT
     X = W*H
-    standard_nmf = nnmf(float(X), 10; alg = :cd, init=:nndsvd, tol=1e-4, initdata = svd(float(X)))
-    W_gsvd, H_gsvd = gsvdnmf(float(X), 9=>10; alg = :cd, maxiter = 10^5, tol_final=1e-4, tol_intermediate = 1e-4);
+    standard_nmf = nnmf(X, 10; alg = :cd, init=:nndsvd, tol=1e-4, initdata = svd(float(X)))
+    W_gsvd, H_gsvd = gsvdnmf(X, 9=>10; alg = :cd, maxiter = 10^5, tol_final=1e-4, tol_intermediate = 1e-4);
     img_tol_int = sum(abs2, X)
     @test size(W_gsvd, 2) == 10
     @test sum(abs2, X-standard_nmf.W*standard_nmf.H)/sum(abs2, X) > sum(abs2, X-W_gsvd*H_gsvd)/sum(abs2, X)

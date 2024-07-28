@@ -50,9 +50,7 @@ julia> Wgsvd, Hgsvd = gsvdnmf(X, 9=>10; alg = :cd, maxiter = 10^12);
 julia> sum(abs2, X-Wgsvd*Hgsvd)/sum(abs2, X)
 1.2322603074132593e-10
 ```
-
 Gsvd-NMF factorizes the gound truth well based on the comparison between relative fitting errors and figures.
-
 
 <img src="demo/ResultGsvdNMF.png" alt="Sample Figure" width="400"/>
 
@@ -61,7 +59,7 @@ Gsvd-NMF factorizes the gound truth well based on the comparison between relativ
 
 ## Functions
 
-W, H = **gsvdnmf**(X, ncomponents::Pair{Int,Int}; tol_final=1e-4, tol_intermediate=tol_final, W0=nothing, H0=nothing, kwargs...)
+W, H = **gsvdnmf**(X::AbstractMatrix, ncomponents::Pair{Int,Int}; kwargs...)
 
 This function performs "GSVD-NMF" on 2D data matrix ``X``.
 
@@ -78,13 +76,27 @@ Keyword arguments:
 
 ``tol_intermediate``: The tolerence of initial NMF (under-complete NMF), default: $\mathrm{tol\\_final}$
 
-``W0``: initialization of initial NMF, default: ``nothing``
+Other keyword arguments are passed to ``NMF.nnmf``.
 
-``H0``: initialization of initial NMF, default: ``nothing``
+-----
 
-If one of ``W0`` and ``H0`` is ``nothing``, NNDSVD is used for initialization.
+W, H = **gsvdnmf**(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, [f]::Tuple; 
+                   n2 = size(first(f), 2), 
+                   tol_final=1e-4, 
+                   tol_intermediate=1e-4, 
+                   kwargs...)
 
-Other keywords arguments are passed to ``NMF.nnmf``.
+This function performs "GSVD-NMF" on 2D data matrix ``X`` with customized initialization for initial NMF.
+
+Arguments:
+
+``W``: initialization of initial NMF
+
+``H``: initialization of initial NMF
+
+``f``: SVD (or Truncated SVD) of ``X``
+
+Other arguments and keyword arguments are the same the above method.
 
 -----
 
