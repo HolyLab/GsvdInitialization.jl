@@ -16,6 +16,7 @@ Demo:
 Install and load packages
 ```julia
 julia>] add GsvdInitialization;
+julia> using GsvdInitialization, NMF, LinearAlgebra;
 ```
 
 Generating grouth truth with 10 features.
