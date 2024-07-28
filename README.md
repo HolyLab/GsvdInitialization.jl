@@ -13,9 +13,12 @@ See also [NMFMerge](https://github.com/HolyLab/NMFMerge.jl) for the converse ope
 
 Demo:
 
-Install the package
+To run this demo, NMF.jl and LinearAlgebra.jl are also required.
+
+Install and load packages
 ```julia
 julia>] add GsvdInitialization;
+julia> using GsvdInitialization, NMF, LinearAlgebra;
 ```
 
 Generating grouth truth with 10 features.
@@ -46,7 +49,7 @@ This factorization is not perfect as two components are same and two features sh
 Then, running GSVD-NMF on X (also using NNSVD as initialization).
 
 ```julia
-julia> Wgsvd, Hgsvd = gsvdnmf(X, 9=>10; alg = :cd, maxiter = 10^12);
+Wgsvd, Hgsvd = gsvdnmf(X, 9=>10; alg = :cd, tol_final = 1e-4, tol_intermediate = 1e-2, maxiter = 10^12);
 julia> sum(abs2, X-Wgsvd*Hgsvd)/sum(abs2, X)
 1.2322603074132593e-10
 ```
