@@ -9,6 +9,7 @@ It is used to recover Non-negative matrix factorization(NMF) components from low
 This method allows the incremental expansion of the number of components, which can be convenient and effective for interactive analysis of large-scale data.
 
 See also [NMFMerge](https://github.com/HolyLab/NMFMerge.jl) for the converse operation. Together, the two result in a substantial improvement in the quality and consistency of NMF factorization.
+
 ---------------------------
 
 Demo:
