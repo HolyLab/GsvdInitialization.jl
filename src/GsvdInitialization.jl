@@ -6,6 +6,32 @@ using NonNegLeastSquares
 export gsvdnmf,
        gsvdrecover
 
+"""
+    W, H = **gsvdnmf**(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, f; 
+                    n2 = size(first(f), 2), 
+                    tol_nmf=1e-4, 
+                    kwargs...)
+
+    This funtion augments components for ``W`` and ``H``, and subsequently polishs new ``W`` and ``H`` by NMF.
+
+    Arguments:
+
+    ``X``: non-nagetive 2D data matrix
+
+    ``W``: initialization of initial NMF
+
+    ``H``: initialization of initial NMF
+
+    ``n2``: the number of components in augmented matrix
+
+    ``f``: SVD (or Truncated SVD) of ``X``, ``f`` needs to be explicitly writen in ``Tuple`` form.
+
+    Keyword arguments 
+
+    ``tol_nmf``: the tolerance of  NMF polishing step, default: 1e-4
+
+    Other keyword arguments are passed to ``NMF.nnmf``.
+"""
 function gsvdnmf(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, f; 
                  n2 = size(first(f), 2), 
                  tol_nmf=1e-4, 
@@ -25,6 +51,28 @@ function gsvdnmf(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, f;
 end
 gsvdnmf(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, n2::Int; kwargs...) = gsvdnmf(X, W, H, tsvd(X, n2); kwargs...)
 
+"""
+    W, H = **gsvdnmf**(X::AbstractMatrix, ncomponents::Pair{Int,Int}; tol_final=1e-4, tol_intermediate=1e-4, kwargs...)
+
+    This function performs "GSVD-NMF" on 2D data matrix ``X``.
+
+    Arguments:
+
+    ``X``: non-nagetive 2D data matrix
+
+    ``ncomponents::Pair{Int,Int}``: in the form of ``n1 => n2``, augments from ``n1`` components to ``n2``components, where ``n1`` is the number of components for initial NMF (under-complete NMF), and ``n2`` is the number of components for final NMF.
+
+    Alternatively, ``ncomponents`` can be an integer denoting the number of components for final NMF. 
+    In this case, ``gsvdnmf`` defaults to augment components on initial NMF solution by 1.
+
+    Keyword arguments:
+
+    ``tol_final``： The tolerence of final NMF, default:``10^{-4}``
+
+    ``tol_intermediate``: The tolerence of initial NMF (under-complete NMF), default: tol_final
+
+    Other keyword arguments are passed to ``NMF.nnmf``.
+"""
 function gsvdnmf(X::AbstractMatrix, ncomponents::Pair{Int,Int}; tol_final=1e-4, tol_intermediate=1e-4, kwargs...)
     n1, n2 = ncomponents
     f = tsvd(X, n2)
@@ -34,7 +82,32 @@ function gsvdnmf(X::AbstractMatrix, ncomponents::Pair{Int,Int}; tol_final=1e-4, 
     return gsvdnmf(X, W_initial_nmf, H_initial_nmf, f; kwargs..., n2=n2, tol_nmf=tol_final)
 end
 gsvdnmf(X::AbstractMatrix, ncomponents_final::Integer; kwargs...) = gsvdnmf(X, ncomponents_final-1 => ncomponents_final; kwargs...)
-    
+
+"""
+    Wadd, Hadd, S = **gsvdrecover**(X, W0, H0, kadd, f)
+
+    This funtion augments components for ``W`` and ``H`` without polishing NMF step.
+
+    Outputs:
+
+    ``Wadd``: augmented NMF solution
+
+    ``Hadd``: augmented NMF solution
+
+    ``S``: related generalized singular value
+
+    Arguments:
+
+    ``X``: non-nagetive 2D data matrix
+
+    ``W0``: NMF solution
+
+    ``H0``: NMF solution
+
+    ``kadd``: number of new components
+
+    ``f``: SVD (or Truncated SVD) of ``X``, ``f`` needs to be indexable.
+"""
 function gsvdrecover(X::AbstractArray, W0::AbstractArray, H0::AbstractArray, kadd::Int, f::Tuple)
     m, n = size(W0)
     kadd <= n || throw(ArgumentError("# of extra columns must less than 1st NMF components"))

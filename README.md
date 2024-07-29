@@ -134,7 +134,7 @@ Arguments:
 
 ``kadd``: number of new components
 
-``f``: SVD (or Truncated SVD) of ``X``, ``f`` needs to be explicitly writen in ``Tuple`` form.
+``f``: SVD (or Truncated SVD) of ``X``, ``f`` needs to be indexable.
 
 -----
 
