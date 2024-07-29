@@ -8,31 +8,30 @@ export gsvdnmf,
 
 function gsvdnmf(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, f; 
                  n2 = size(first(f), 2), 
-                 tol_final=1e-4, 
-                 tol_intermediate=1e-4, 
+                 tol_nmf=1e-4, 
                  kwargs...)
     n1 = size(W, 2)
     kadd = n2 - n1
-    kadd >= 0 || throw(ArgumentError("The number of components to add must be non-negative."))
-    kadd <= n1 || throw(ArgumentError("The number of components to add must be less than initial number of components."))
-    size(first(f), 2) >= n1 || throw(ArgumentError("SVD components number cannot be less than initial number of components."))
-    result_initial = nnmf(X, n1; kwargs..., init=:custom, tol=tol_intermediate, W0=copy(W), H0=copy(H))
-    W_initial, H_initial = result_initial.W, result_initial.H
+    kadd >= 0 || throw(ArgumentError("The number of components to add must be non-negative"))
+    kadd <= n1 || throw(ArgumentError("The number of components to add must be less than initial number of components"))
+    size(first(f), 2) >= n1 || throw(ArgumentError("The supplied SVD does not have enough components"))
     if kadd == 0
-        return W_initial, H_initial
+        return W, H
     else
-        W_recover, H_recover = gsvdrecover(X, copy(W_initial), copy(H_initial), kadd, f)
-        result_recover = nnmf(X, n2; kwargs..., init=:custom, tol=tol_final, W0=copy(W_recover), H0=copy(H_recover))
+        W_recover, H_recover = gsvdrecover(X, copy(W), copy(H), kadd, f)
+        result_recover = nnmf(X, n2; kwargs..., init=:custom, tol=tol_nmf, W0=copy(W_recover), H0=copy(H_recover))
         return result_recover.W, result_recover.H
     end
 end
 gsvdnmf(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, n2::Int; kwargs...) = gsvdnmf(X, W, H, tsvd(X, n2); kwargs...)
 
-function gsvdnmf(X::AbstractMatrix, ncomponents::Pair{Int,Int}; kwargs...)
+function gsvdnmf(X::AbstractMatrix, ncomponents::Pair{Int,Int}; tol_final=1e-4, tol_intermediate=1e-4, kwargs...)
     n1, n2 = ncomponents
     f = tsvd(X, n2)
     W0, H0 = NMF.nndsvd(X, n1; initdata = (U = f[1], S = f[2], V = f[3]))
-    return gsvdnmf(X, W0, H0, f; kwargs...)
+    result_initial_nmf = nnmf(X, n1; kwargs..., init=:custom, tol=tol_intermediate, W0=copy(W0), H0=copy(H0))
+    W_initial_nmf, H_initial_nmf = result_initial_nmf.W, result_initial_nmf.H
+    return gsvdnmf(X, W_initial_nmf, H_initial_nmf, f; kwargs..., n2=n2, tol_nmf=tol_final)
 end
 gsvdnmf(X::AbstractMatrix, ncomponents_final::Integer; kwargs...) = gsvdnmf(X, ncomponents_final-1 => ncomponents_final; kwargs...)
     

@@ -62,11 +62,13 @@ Gsvd-NMF factorizes the gound truth well based on the comparison between relativ
 
 ## Functions
 
-W, H = **gsvdnmf**(X::AbstractMatrix, ncomponents::Pair{Int,Int}; kwargs...)
+W, H = **gsvdnmf**(X::AbstractMatrix, ncomponents::Pair{Int,Int}; tol_final=1e-4, tol_intermediate=1e-4, kwargs...)
 
 This function performs "GSVD-NMF" on 2D data matrix ``X``.
 
 Arguments:
+
+``X``: non-nagetive 2D data matrix
 
 ``ncomponents::Pair{Int,Int}``: in the form of ``n1 => n2``, augments from ``n1`` components to ``n2``components, where ``n1`` is the number of components for initial NMF (under-complete NMF), and ``n2`` is the number of components for final NMF.
 
@@ -83,29 +85,36 @@ Other keyword arguments are passed to ``NMF.nnmf``.
 
 -----
 
-W, H = **gsvdnmf**(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, [f]::Tuple; 
+W, H = **gsvdnmf**(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, f; 
                    n2 = size(first(f), 2), 
-                   tol_final=1e-4, 
-                   tol_intermediate=1e-4, 
+                   tol_nmf=1e-4, 
                    kwargs...)
 
-This function performs "GSVD-NMF" on 2D data matrix ``X`` with customized initialization for initial NMF.
+This funtion augments components for ``W`` and ``H``, and subsequently polishs new ``W`` and ``H`` by NMF.
 
 Arguments:
+
+``X``: non-nagetive 2D data matrix
 
 ``W``: initialization of initial NMF
 
 ``H``: initialization of initial NMF
 
-``f``: SVD (or Truncated SVD) of ``X``
+``n2``: the number of components in augmented matrix
 
-Other arguments and keyword arguments are the same the above method.
+``f``: SVD (or Truncated SVD) of ``X``, ``f`` needs to be explicitly writen in ``Tuple`` form.
+
+Keyword arguments 
+
+``tol_nmf``: the tolerance of  NMF polishing step, default: $10^{-4}$
+
+Other keyword arguments are passed to ``NMF.nnmf``.
 
 -----
 
-Wadd, Hadd, S = **gsvdrecover**(X, W0, H0, kadd; initdata = nothing)
+Wadd, Hadd, S = **gsvdrecover**(X, W0, H0, kadd, f)
 
-Given NMF solution ``W0`` and ``H``, this function recovers components for NMF solution. 
+This funtion augments components for ``W`` and ``H`` without polishing NMF step.
 
 Outputs:
 
@@ -125,9 +134,7 @@ Arguments:
 
 ``kadd``: number of new components
 
-Keyword arguments:
-
-``initdata``: the svd of ``X``
+``f``: SVD (or Truncated SVD) of ``X``, ``f`` needs to be explicitly writen in ``Tuple`` form.
 
 -----
 
