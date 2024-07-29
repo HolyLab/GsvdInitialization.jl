@@ -19,7 +19,7 @@ function gsvdnmf(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, f;
         return W, H
     else
         W_recover, H_recover = gsvdrecover(X, copy(W), copy(H), kadd, f)
-        result_recover = nnmf(X, n2; kwargs..., init=:custom, tol=tol_nmf, W0=copy(W_recover), H0=copy(H_recover))
+        result_recover = nnmf(X, n2; kwargs..., init=:custom, tol=tol_nmf, W0=W_recover, H0=H_recover)
         return result_recover.W, result_recover.H
     end
 end
