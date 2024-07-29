@@ -1,48 +1,128 @@
 module GsvdInitialization
 
-using LinearAlgebra, NMF
+using LinearAlgebra, NMF, TSVD
 using NonNegLeastSquares
 
 export gsvdnmf,
        gsvdrecover
 
-function gsvdnmf(X, ncomponents::Pair{Int,Int}; tol_final=1e-4, tol_intermediate=sqrt(tol_final), W0=nothing, H0=nothing, kwargs...)
-    f = svd(X)
-    if W0 === nothing && H0 === nothing
-        W0, H0 = NMF.nndsvd(X, ncomponents[2], initdata=f)
-    end
-    result_initial = nnmf(X, ncomponents[2]; kwargs..., init=:custom, tol=tol_intermediate, W0=copy(W0), H0=copy(H0))
-    W_initial, H_initial = result_initial.W, result_initial.H
-    kadd = ncomponents[2] - ncomponents[1]
-    kadd >= 0 || throw(ArgumentError("The number of components to add must be non-negative."))
-    kadd <= ncomponents[2] || throw(ArgumentError("The number of components to add must be less than the total number of components."))
-    W_recover, H_recover = gsvdrecover(X, copy(W_initial), copy(H_initial), kadd, initdata=f)
-    result_recover = nnmf(X, ncomponents[1]; kwargs..., init=:custom, tol=tol_final, W0=copy(W_recover), H0=copy(H_recover))
-    return result_recover
-end
-    
-function gsvdrecover(X::AbstractArray, W0::AbstractArray, H0::AbstractArray, kadd::Int; initdata = nothing)
+"""
+    W, H = **gsvdnmf**(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, f; 
+                    n2 = size(first(f), 2), 
+                    tol_nmf=1e-4, 
+                    kwargs...)
+
+    This funtion augments components for ``W`` and ``H``, and subsequently polishs new ``W`` and ``H`` by NMF.
+
+    Arguments:
+
+    ``X``: non-nagetive 2D data matrix
+
+    ``W``: initialization of initial NMF
+
+    ``H``: initialization of initial NMF
+
+    ``n2``: the number of components in augmented matrix
+
+    ``f``: SVD (or Truncated SVD) of ``X``, ``f`` needs to be explicitly writen in ``Tuple`` form.
+
+    Keyword arguments 
+
+    ``tol_nmf``: the tolerance of  NMF polishing step, default: 1e-4
+
+    Other keyword arguments are passed to ``NMF.nnmf``.
+"""
+function gsvdnmf(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, f; 
+                 n2 = size(first(f), 2), 
+                 tol_nmf=1e-4, 
+                 kwargs...)
+    n1 = size(W, 2)
+    kadd = n2 - n1
+    kadd >= 0 || throw(ArgumentError("The number of components to add must be non-negative"))
+    kadd <= n1 || throw(ArgumentError("The number of components to add must be less than initial number of components"))
+    size(first(f), 2) >= n1 || throw(ArgumentError("The supplied SVD does not have enough components"))
     if kadd == 0
-        return W0, H0
+        return W, H
     else
-        m = size(W0, 1) 
-        Wadd, Hadd, a, Λ = components_recover(X, W0, H0, kadd; initdata = initdata)
+        W_recover, H_recover = gsvdrecover(X, copy(W), copy(H), kadd, f)
+        result_recover = nnmf(X, n2; kwargs..., init=:custom, tol=tol_nmf, W0=W_recover, H0=H_recover)
+        return result_recover.W, result_recover.H
+    end
+end
+gsvdnmf(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, n2::Int; kwargs...) = gsvdnmf(X, W, H, tsvd(X, n2); kwargs...)
+
+"""
+    W, H = **gsvdnmf**(X::AbstractMatrix, ncomponents::Pair{Int,Int}; tol_final=1e-4, tol_intermediate=1e-4, kwargs...)
+
+    This function performs "GSVD-NMF" on 2D data matrix ``X``.
+
+    Arguments:
+
+    ``X``: non-nagetive 2D data matrix
+
+    ``ncomponents::Pair{Int,Int}``: in the form of ``n1 => n2``, augments from ``n1`` components to ``n2``components, where ``n1`` is the number of components for initial NMF (under-complete NMF), and ``n2`` is the number of components for final NMF.
+
+    Alternatively, ``ncomponents`` can be an integer denoting the number of components for final NMF. 
+    In this case, ``gsvdnmf`` defaults to augment components on initial NMF solution by 1.
+
+    Keyword arguments:
+
+    ``tol_final``： The tolerence of final NMF, default:``10^{-4}``
+
+    ``tol_intermediate``: The tolerence of initial NMF (under-complete NMF), default: tol_final
+
+    Other keyword arguments are passed to ``NMF.nnmf``.
+"""
+function gsvdnmf(X::AbstractMatrix, ncomponents::Pair{Int,Int}; tol_final=1e-4, tol_intermediate=1e-4, kwargs...)
+    n1, n2 = ncomponents
+    f = tsvd(X, n2)
+    W0, H0 = NMF.nndsvd(X, n1; initdata = (U = f[1], S = f[2], V = f[3]))
+    result_initial_nmf = nnmf(X, n1; kwargs..., init=:custom, tol=tol_intermediate, W0=copy(W0), H0=copy(H0))
+    W_initial_nmf, H_initial_nmf = result_initial_nmf.W, result_initial_nmf.H
+    return gsvdnmf(X, W_initial_nmf, H_initial_nmf, f; kwargs..., n2=n2, tol_nmf=tol_final)
+end
+gsvdnmf(X::AbstractMatrix, ncomponents_final::Integer; kwargs...) = gsvdnmf(X, ncomponents_final-1 => ncomponents_final; kwargs...)
+
+"""
+    Wadd, Hadd, S = **gsvdrecover**(X, W0, H0, kadd, f)
+
+    This funtion augments components for ``W`` and ``H`` without polishing NMF step.
+
+    Outputs:
+
+    ``Wadd``: augmented NMF solution
+
+    ``Hadd``: augmented NMF solution
+
+    ``S``: related generalized singular value
+
+    Arguments:
+
+    ``X``: non-nagetive 2D data matrix
+
+    ``W0``: NMF solution
+
+    ``H0``: NMF solution
+
+    ``kadd``: number of new components
+
+    ``f``: SVD (or Truncated SVD) of ``X``, ``f`` needs to be indexable.
+"""
+function gsvdrecover(X::AbstractArray, W0::AbstractArray, H0::AbstractArray, kadd::Int, f::Tuple)
+    m, n = size(W0)
+    kadd <= n || throw(ArgumentError("# of extra columns must less than 1st NMF components"))
+    if kadd == 0
+        return W0, H0, 0
+    else
+        U0, S0, V0 = f[1][:,1:n], f[2][1:n], f[3][:,1:n]
+        Hadd, Λ = init_H(U0, S0, V0, W0, H0, kadd)
+        Wadd, a = init_W(X, W0, H0, Hadd)
         Wadd_nn, Hadd_nn = NMF.nndsvd(X, kadd, initdata = (U = Wadd, S = ones(kadd), V = Hadd'))
         W0_1, H0_1 = [repeat(a', m, 1).*W0 Wadd_nn], [H0; Hadd_nn]
         cs = Wcols_modification(X, W0_1, H0_1)
         W0_2, H0_2 = repeat(cs', m, 1).*W0_1, H0_1
         return abs.(W0_2), abs.(H0_2), Λ
     end
-end
-
-function components_recover(X::AbstractArray, W0::AbstractArray, H0::AbstractArray, kadd::Int; initdata = nothing)
-        n::Int = size(W0, 2)
-        kadd <= n || throw(ArgumentError("# of extra columns must less than 1st NMF components"))
-        U, S, V = initdata === nothing ? svd(X) : (initdata.U, initdata.S, initdata.V)
-        U0, S0, V0 = U[:,1:n], S[1:n], V[:,1:n]
-        Hadd, Λ = init_H(U0, S0, V0, W0, H0, kadd)
-        Wadd, a = init_W(X, W0, H0, Hadd)
-        return Wadd, Hadd, a, Λ
 end
 
 function init_H(U0::AbstractArray, S0::AbstractArray, V0::AbstractArray, W0::AbstractArray, H0::AbstractArray, kadd::Int)

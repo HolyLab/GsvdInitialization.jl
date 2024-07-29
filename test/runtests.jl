@@ -3,8 +3,29 @@ using Test
 
 using LinearAlgebra, NMF
 
+include(joinpath(dirname(@__DIR__), "demo/generate_ground_truth.jl"))
+
+W_GT, H_GT = generate_ground_truth()
+
+@testset "test top wrapper" begin
+    W = W_GT
+    H = H_GT
+    X = W*H
+    standard_nmf = nnmf(X, 10; alg = :cd, init=:nndsvd, tol=1e-4, initdata = svd(float(X)))
+    W_gsvd, H_gsvd = gsvdnmf(X, 9=>10; alg = :cd, maxiter = 10^5, tol_final=1e-4, tol_intermediate = 1e-4);
+    img_tol_int = sum(abs2, X)
+    @test size(W_gsvd, 2) == 10
+    @test sum(abs2, X-standard_nmf.W*standard_nmf.H)/sum(abs2, X) > sum(abs2, X-W_gsvd*H_gsvd)/sum(abs2, X)
+    @test sum(abs2, X-W_gsvd*H_gsvd)/sum(abs2, X) < 2e-10
+
+    X = rand(30, 20)
+    W_gsvd_1, H_gsvd_1 = gsvdnmf(X, 10; alg=:cd)
+    W_gsvd_2, H_gsvd_2 = gsvdnmf(X, 9 => 10; alg=:cd)
+    @test sum(abs2, W_gsvd_1-W_gsvd_2) <= 1e-12
+    @test sum(abs2, H_gsvd_1-H_gsvd_2) <= 1e-12
+end
+
 @testset "GsvdInitialization.jl" begin
-    # Write your tests here.
     W, H = rand(10, 3), rand(3, 8)
     X = W*H
     U, S, V = svd(X)

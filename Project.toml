@@ -7,14 +7,18 @@ version = "0.1.0"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 NMF = "6ef6ca0d-6ad7-5ff6-b225-e928bfa0a386"
 NonNegLeastSquares = "b7351bd1-99d9-5c5d-8786-f205a815c4d7"
+TSVD = "9449cd9e-2762-5aa3-a617-5413e99d722e"
 
 [compat]
+LinearAlgebra = "1"
 NMF = "1"
 NonNegLeastSquares = "0.4"
-julia = "1"
+TSVD = "0.4"
+julia = "1.10"
 
 [extras]
+NMF = "6ef6ca0d-6ad7-5ff6-b225-e928bfa0a386"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [targets]
-test = ["Test"]
+test = ["NMF", "Test"]
