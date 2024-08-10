@@ -3,9 +3,9 @@
 [![CI](https://github.com/HolyLab/GsvdInitialization.jl/actions/workflows/CI.yml/badge.svg)](https://github.com/HolyLab/GsvdInitialization.jl/actions/workflows/CI.yml)
 [![codecov](https://codecov.io/gh/HolyLab/GsvdInitialization.jl/graph/badge.svg?token=LxqRCsZIvn)](https://codecov.io/gh/HolyLab/GsvdInitialization.jl)
 
-This package includes the code of the paper 'GSVD-NMF: Recovering Missing Features in
-Non-negative Matrix Factorization`. 
-It is used to recover Non-negative matrix factorization(NMF) components from low-dimensional space to higher dimensional space by exploiting the generalized singular value decomposition (GSVD) between existing NMF results and the SVD of X.
+This package implements the technique in the paper 'GSVD-NMF: Recovering Missing Features in
+Non-negative Matrix Factorization`.
+It is used to recover Non-negative matrix factorization(NMF) components from an initial lower-rank factorization by exploiting the generalized singular value decomposition (GSVD) between existing NMF results and the SVD of X.
 This method allows the incremental expansion of the number of components, which can be convenient and effective for interactive analysis of large-scale data.
 
 See also [NMFMerge](https://github.com/HolyLab/NMFMerge.jl) for the converse operation. Together, the two result in a substantial improvement in the quality and consistency of NMF factorization.
@@ -16,9 +16,9 @@ Demo:
 
 To run this demo, NMF.jl and LinearAlgebra.jl are also required.
 
-Install and load packages
+Install and load packages (type `]` at the `julia>` prompt to enter `pkg>` mode):
 ```julia
-julia>] add GsvdInitialization;
+pkg> add GsvdInitialization;
 julia> using GsvdInitialization, NMF, LinearAlgebra;
 ```
 
@@ -46,15 +46,16 @@ The result is given by
 
 <img src="demo/ResultHals.png" alt="Sample Figure" width="400"/>
 
-This factorization is not perfect as two components are same and two features share one component.
-Then, running GSVD-NMF on X (also using NNSVD as initialization).
+This factorization is not perfect as two components are the same and two features share one component.
+Then, running GSVD-NMF on X (also using NNSVD as initialization) and computing the new reconstruction error:
 
 ```julia
 Wgsvd, Hgsvd = gsvdnmf(X, 9=>10; alg = :cd, tol_final = 1e-4, tol_intermediate = 1e-2, maxiter = 10^12);
 julia> sum(abs2, X-Wgsvd*Hgsvd)/sum(abs2, X)
 1.2322603074132593e-10
 ```
-Gsvd-NMF factorizes the gound truth well based on the comparison between relative fitting errors and figures.
+An imperfect factorization from `nnmf` alone was augmented by `gsvdnmf` to a perfect factorization.
+Here are the new components:
 
 <img src="demo/ResultGsvdNMF.png" alt="Sample Figure" width="400"/>
 
@@ -73,7 +74,7 @@ Arguments:
 
 ``ncomponents::Pair{Int,Int}``: in the form of ``n1 => n2``, augments from ``n1`` components to ``n2``components, where ``n1`` is the number of components for initial NMF (under-complete NMF), and ``n2`` is the number of components for final NMF.
 
-Alternatively, ``ncomponents`` can be an integer denoting the number of components for final NMF. 
+Alternatively, ``ncomponents`` can be an integer denoting the number of components for final NMF.
 In this case, ``gsvdnmf`` defaults to augment components on initial NMF solution by 1.
 
 Keyword arguments:
@@ -86,9 +87,9 @@ Other keyword arguments are passed to ``NMF.nnmf``.
 
 -----
 
-W, H = **gsvdnmf**(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, f; 
-                   n2 = size(first(f), 2), 
-                   tol_nmf=1e-4, 
+W, H = **gsvdnmf**(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, f;
+                   n2 = size(first(f), 2),
+                   tol_nmf=1e-4,
                    kwargs...)
 
 This funtion augments components for ``W`` and ``H``, and subsequently polishs new ``W`` and ``H`` by NMF.
@@ -105,7 +106,7 @@ Arguments:
 
 ``f``: SVD (or Truncated SVD) of ``X``, ``f`` needs to be explicitly writen in ``Tuple`` form.
 
-Keyword arguments 
+Keyword arguments
 
 ``tol_nmf``: the tolerance of  NMF polishing step, default: $10^{-4}$
 
@@ -140,9 +141,5 @@ Arguments:
 -----
 
 ## Citation
-The code is welcomed to be used in your publication, please cite:
 
-
-
-
-
+If you find this package useful please cite:

@@ -7,34 +7,32 @@ export gsvdnmf,
        gsvdrecover
 
 """
-    W, H = **gsvdnmf**(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, f; 
-                    n2 = size(first(f), 2), 
-                    tol_nmf=1e-4, 
-                    kwargs...)
+    W, H = gsvdnmf(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, f;
+                   n2 = size(first(f), 2),
+                   tol_nmf=1e-4,
+                   kwargs...)
 
-    This funtion augments components for ``W`` and ``H``, and subsequently polishs new ``W`` and ``H`` by NMF.
+Augment `W` and `H` to have `n2` components, subsequently polished by NMF.
 
-    Arguments:
+Arguments:
 
-    ``X``: non-nagetive 2D data matrix
+- `X`: non-negative data matrix
 
-    ``W``: initialization of initial NMF
+- `W` and `H`: initial NMF factorization
 
-    ``H``: initialization of initial NMF
+- `n2`: the number of components in augmented factorization
 
-    ``n2``: the number of components in augmented matrix
+- `f`: SVD (or Truncated SVD) of `X`
 
-    ``f``: SVD (or Truncated SVD) of ``X``, ``f`` needs to be explicitly writen in ``Tuple`` form.
+Keyword arguments:
 
-    Keyword arguments 
+- `tol_nmf`: the tolerance of  NMF polishing step, default: 1e-4
 
-    ``tol_nmf``: the tolerance of  NMF polishing step, default: 1e-4
-
-    Other keyword arguments are passed to ``NMF.nnmf``.
+Other keyword arguments are passed to `NMF.nnmf`.
 """
-function gsvdnmf(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, f; 
-                 n2 = size(first(f), 2), 
-                 tol_nmf=1e-4, 
+function gsvdnmf(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, f;
+                 n2 = size(first(f), 2),
+                 tol_nmf=1e-4,
                  kwargs...)
     n1 = size(W, 2)
     kadd = n2 - n1
@@ -52,28 +50,30 @@ end
 gsvdnmf(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, n2::Int; kwargs...) = gsvdnmf(X, W, H, tsvd(X, n2); kwargs...)
 
 """
-    W, H = **gsvdnmf**(X::AbstractMatrix, ncomponents::Pair{Int,Int}; tol_final=1e-4, tol_intermediate=1e-4, kwargs...)
+    W, H = gsvdnmf(X::AbstractMatrix, ncomponents::Pair{Int,Int}; tol_final=1e-4, tol_intermediate=1e-4, kwargs...)
 
-    This function performs "GSVD-NMF" on 2D data matrix ``X``.
+Perform "GSVD-NMF" on the data matrix `X`.
 
-    Arguments:
+Arguments:
 
-    ``X``: non-nagetive 2D data matrix
+- `X`: non-negative data matrix
 
-    ``ncomponents::Pair{Int,Int}``: in the form of ``n1 => n2``, augments from ``n1`` components to ``n2``components, where ``n1`` is the number of components for initial NMF (under-complete NMF), and ``n2`` is the number of components for final NMF.
+- `ncomponents`: in the form of `n1 => n2`, augments from `n1` components to `n2`components,
+  where `n1` is the number of components for initial NMF (under-complete NMF), and `n2` is the number of
+  components for final NMF.
 
-    Alternatively, ``ncomponents`` can be an integer denoting the number of components for final NMF. 
-    In this case, ``gsvdnmf`` defaults to augment components on initial NMF solution by 1.
+Alternatively, `ncomponents` can be an integer denoting the number of components for final NMF.
+In this case, `gsvdnmf` defaults to augment components on initial NMF solution by 1.
 
-    Keyword arguments:
+Keyword arguments:
 
-    ``tol_final``： The tolerence of final NMF, default:``10^{-4}``
+- `tol_final`: The tolerence of final NMF, default:`10^{-4}`
 
-    ``tol_intermediate``: The tolerence of initial NMF (under-complete NMF), default: tol_final
+- `tol_intermediate`: The tolerence of initial NMF (under-complete NMF), default: tol_final
 
-    Other keyword arguments are passed to ``NMF.nnmf``.
+Other keyword arguments are passed to `NMF.nnmf`.
 """
-function gsvdnmf(X::AbstractMatrix, ncomponents::Pair{Int,Int}; tol_final=1e-4, tol_intermediate=1e-4, kwargs...)
+function gsvdnmf(X::AbstractMatrix, ncomponents::Pair{Int,Int}; tol_final=1e-4, tol_intermediate=tol_final, kwargs...)
     n1, n2 = ncomponents
     f = tsvd(X, n2)
     W0, H0 = NMF.nndsvd(X, n1; initdata = (U = f[1], S = f[2], V = f[3]))
@@ -84,29 +84,29 @@ end
 gsvdnmf(X::AbstractMatrix, ncomponents_final::Integer; kwargs...) = gsvdnmf(X, ncomponents_final-1 => ncomponents_final; kwargs...)
 
 """
-    Wadd, Hadd, S = **gsvdrecover**(X, W0, H0, kadd, f)
+    Wadd, Hadd, S = gsvdrecover(X, W0, H0, kadd, f)
 
-    This funtion augments components for ``W`` and ``H`` without polishing NMF step.
+Augment components for `W` and `H` without polishing by NMF.
 
-    Outputs:
+Outputs:
 
-    ``Wadd``: augmented NMF solution
+`Wadd`: augmented NMF solution
 
-    ``Hadd``: augmented NMF solution
+`Hadd`: augmented NMF solution
 
-    ``S``: related generalized singular value
+`S`: generalized singular values for the `kadd` augmented components
 
-    Arguments:
+Arguments:
 
-    ``X``: non-nagetive 2D data matrix
+`X`: non-nagetive 2D data matrix
 
-    ``W0``: NMF solution
+`W0`: NMF solution
 
-    ``H0``: NMF solution
+`H0`: NMF solution
 
-    ``kadd``: number of new components
+`kadd`: number of new components
 
-    ``f``: SVD (or Truncated SVD) of ``X``, ``f`` needs to be indexable.
+`f`: SVD (or Truncated SVD) of `X`
 """
 function gsvdrecover(X::AbstractArray, W0::AbstractArray, H0::AbstractArray, kadd::Int, f::Tuple)
     m, n = size(W0)
@@ -114,7 +114,8 @@ function gsvdrecover(X::AbstractArray, W0::AbstractArray, H0::AbstractArray, kad
     if kadd == 0
         return W0, H0, 0
     else
-        U0, S0, V0 = f[1][:,1:n], f[2][1:n], f[3][:,1:n]
+        U0, S0, V0 = f
+        U0, S0, V0 = U0[:,1:n], S0[1:n], V0[:,1:n]
         Hadd, Λ = init_H(U0, S0, V0, W0, H0, kadd)
         Wadd, a = init_W(X, W0, H0, Hadd)
         Wadd_nn, Hadd_nn = NMF.nndsvd(X, kadd, initdata = (U = Wadd, S = ones(kadd), V = Hadd'))
@@ -167,11 +168,11 @@ function Wcols_modification(X::AbstractArray{T}, W::AbstractArray{T}, H::Abstrac
     n = size(W, 2)
     a = Array{T}(undef, n)
     B = Array{T}(undef, n, n)
-    WW, HH = W'*W, H*H' 
+    WW, HH = W'*W, H*H'
     WtXHt = W'*X*H'
     a = diag(WtXHt)
     B = WW.*HH
-    β = nonneg_lsq(B, a; alg=:fnnls, gram=true) 
+    β = nonneg_lsq(B, a; alg=:fnnls, gram=true)
     return β[:]
 end
 
