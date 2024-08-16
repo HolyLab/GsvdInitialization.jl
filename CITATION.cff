@@ -2,11 +2,11 @@
 # Visit https://bit.ly/cffinit to generate yours today!
 
 cff-version: 1.2.0
-title: GsvdInitialization.jl
+title: 'GSVD-NMF: Recovering Missing Features in Non-negative Matrix Factorization'
 message: >-
   If you use this software, please cite it using the
   metadata from this file.
-type: article
+type: software
 authors:
   - given-names: Youdong
     family-names: Guo
@@ -18,7 +18,7 @@ identifiers:
   - type: url
     value: 'https://arxiv.org/abs/2408.08260'
     description: The ArXiv deposit of the encompassing paper.
-doi: "https://doi.org/10.48550/arXiv.2408.08260"
+doi: 'https://doi.org/10.48550/arXiv.2408.08260'
 repository-code: 'https://github.com/HolyLab/GsvdInitialization.jl'
 abstract: >-
   Non-negative matrix factorization (NMF) is an important
