@@ -6,7 +6,7 @@ title: GsvdInitialization.jl
 message: >-
   If you use this software, please cite it using the
   metadata from this file.
-type: misc
+type: article
 authors:
   - given-names: Youdong
     family-names: Guo
