@@ -1,0 +1,37 @@
+# This CITATION.cff file was generated with cffinit.
+# Visit https://bit.ly/cffinit to generate yours today!
+
+cff-version: 1.2.0
+title: 'GSVD-NMF: Recovering Missing Features in Non-negative Matrix Factorization'
+message: >-
+  If you use this software, please cite it using the
+  metadata from this file.
+type: software
+authors:
+  - given-names: Youdong
+    family-names: Guo
+    orcid: 'https://orcid.org/0009-0007-7787-3722'
+  - given-names: Timothy E.
+    family-names: Holy
+    orcid: 'https://orcid.org/0000-0002-2429-1071'
+identifiers:
+  - type: url
+    value: 'https://arxiv.org/abs/2408.08260'
+    description: The ArXiv deposit of the encompassing paper.
+doi: 'https://doi.org/10.48550/arXiv.2408.08260'
+repository-code: 'https://github.com/HolyLab/GsvdInitialization.jl'
+abstract: >-
+  Non-negative matrix factorization (NMF) is an important
+  tool in signal processing and widely used to separate
+  mixed sources into their components. However, NMF is
+  NP-hard and thus may fail to discover the ideal
+  factorization; moreover, the number of components may not
+  be known in advance and thus features may be missed or
+  incompletely separated. To recover missing components from
+  under-complete NMF, we introduce GSVD-NMF, which proposes
+  new components based on the generalized singular value
+  decomposition (GSVD) between preliminary NMF results and
+  the SVD of the original matrix. Simulation and
+  experimental results demonstrate that GSVD-NMF often
+  recovers missing features from under-complete NMF and
+  helps NMF achieve better local optima.

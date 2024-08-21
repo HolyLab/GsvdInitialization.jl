@@ -3,8 +3,8 @@
 [![CI](https://github.com/HolyLab/GsvdInitialization.jl/actions/workflows/CI.yml/badge.svg)](https://github.com/HolyLab/GsvdInitialization.jl/actions/workflows/CI.yml)
 [![codecov](https://codecov.io/gh/HolyLab/GsvdInitialization.jl/graph/badge.svg?token=LxqRCsZIvn)](https://codecov.io/gh/HolyLab/GsvdInitialization.jl)
 
-This package implements the technique in the paper 'GSVD-NMF: Recovering Missing Features in
-Non-negative Matrix Factorization`.
+This package implements the technique in the paper [GSVD-NMF: Recovering Missing Features in
+Non-negative Matrix Factorization](https://arxiv.org/abs/2408.08260).
 It is used to recover Non-negative matrix factorization(NMF) components from an initial lower-rank factorization by exploiting the generalized singular value decomposition (GSVD) between existing NMF results and the SVD of X.
 This method allows the incremental expansion of the number of components, which can be convenient and effective for interactive analysis of large-scale data.
 
@@ -145,4 +145,4 @@ Arguments:
 
 ## Citation
 
-If you find this package useful please cite:
+Thanks for citing this work! See the "Cite this repository" link in the "About" bar for format options.
