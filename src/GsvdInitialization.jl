@@ -2,6 +2,7 @@ module GsvdInitialization
 
 using LinearAlgebra, NMF, TSVD
 using NonNegLeastSquares
+using Kronecker, SparseArrays
 
 export gsvdnmf,
        gsvdrecover
@@ -42,9 +43,11 @@ function gsvdnmf(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, f;
     if kadd == 0
         return W, H
     else
-        W_recover, H_recover = gsvdrecover(X, copy(W), copy(H), kadd, f)
+        W_recover, H_recover, _ = gsvdrecover(X, copy(W), copy(H), kadd, f)
+        # W_recover, H_recover = max.(W_recover, 1e-5), max.(H_recover, 1e-5)
         result_recover = nnmf(X, n2; kwargs..., init=:custom, tol=tol_nmf, W0=copy(W_recover), H0=copy(H_recover))
         return result_recover, W_recover, H_recover
+        # return result_recover.W, result_recover.H
     end
 end
 gsvdnmf(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, n2::Int; kwargs...) = gsvdnmf(X, W, H, tsvd(X, n2); kwargs...)
@@ -117,7 +120,7 @@ function gsvdrecover(X::AbstractArray, W0::AbstractArray, H0::AbstractArray, kad
         U0, S0, V0 = f
         U0, S0, V0 = U0[:,1:n], S0[1:n], V0[:,1:n]
         Hadd, Λ = init_H(U0, S0, V0, W0, H0, kadd)
-        Wadd, a = init_W(X, W0, H0, Hadd)    
+        Wadd, a = init_W(X, W0, H0, Hadd)
         Wadd_nn, Hadd_nn = NMF.nndsvd(X, kadd, initdata = (U = Wadd, S = ones(kadd), V = Hadd'))
         W0_1, H0_1 = [repeat(a', m, 1).*W0 Wadd_nn], [H0; Hadd_nn]
         cs = Wcols_modification(X, W0_1, H0_1)
@@ -126,8 +129,25 @@ function gsvdrecover(X::AbstractArray, W0::AbstractArray, H0::AbstractArray, kad
     end
 end
 
+function gsvdrecover_1(X::AbstractArray, W0::AbstractArray, H0::AbstractArray, kadd::Int, f::Tuple; kwargs...)
+    m, n = size(W0)
+    kadd <= n || throw(ArgumentError("# of extra columns must less than 1st NMF components"))
+    if kadd == 0
+        return W0, H0, 0
+    else
+        U0, S0, V0 = f
+        U0, S0, V0 = U0[:,1:n], S0[1:n], V0[:,1:n]
+        Hadd, Λ = init_H(U0, S0, V0, W0, H0, kadd)
+        Hadd_nn = truncatepos(Hadd', X, W0, H0)'
+        Wadd, a = init_W_1(X, W0, H0, Hadd_nn; kwargs...)
+        W0_1, H0_1 = [repeat(a', m, 1).*W0 Wadd], [H0; Hadd_nn]
+        return abs.(W0_1), abs.(H0_1), Λ
+    end
+end
+
 function init_H(U0::AbstractArray, S0::AbstractArray, V0::AbstractArray, W0::AbstractArray, H0::AbstractArray, kadd::Int)
-    _, _, Q, D1, D2, R = svd(Matrix(Diagonal(S0)), (U0'*W0)*(H0*V0));
+    # _, _, Q, D1, D2, R = svd(Matrix(Diagonal(S0)), (U0'*W0)*(H0*V0));
+    _, _, Q, D1, D2, R = svd(Matrix(Diagonal(S0)), W0*(H0*V0));
     inv_RQt = inv(R*Q')
     r0 = size(U0, 2)
     k = findfirst(x->x!=0, D2[1,:])
@@ -138,7 +158,23 @@ function init_H(U0::AbstractArray, S0::AbstractArray, V0::AbstractArray, W0::Abs
     H_index = sortperm(Λ, rev = true)[1:kadd]
     Hadd = inv_RQt[:, H_index]
     Hadd_1 = V0*Hadd
-    return Hadd_1', Λ[H_index]
+    return Hadd_1', Λ
+end
+
+function init_W_1(X::AbstractArray{T}, W0::AbstractArray{T}, H0::AbstractArray{T}, Hadd::AbstractArray{T}; kwargs...) where T
+    m, n = size(X)
+    kadd = size(Hadd, 1)
+    r0 = size(W0, 2)
+    A = Matrix{Float64}(I, m, m)
+    M = zeros(Float64, m*n, r0)
+    for j in 1:r0
+        M[:,j] = reshape(W0[:,j]*H0[j,:]', m*n)
+    end
+    C = hcat(kronecker(Hadd', A), sparse(M))
+    θ = nonneg_lsq(C, reshape(X, m*n); alg=:fnnls, kwargs...)
+    Wadd = reshape(θ[1:m*kadd], m, kadd)
+    α = θ[m*kadd+1:end]
+    return Wadd, abs.(α)
 end
 
 function init_W(X::AbstractArray{T}, W0::AbstractArray{T}, H0::AbstractArray{T}, Hadd::AbstractArray{T}; α = nothing) where T
@@ -155,6 +191,9 @@ function obj_para(X::AbstractArray{T}, W0::AbstractArray{T}, H0::AbstractArray{T
     HH = Hadd*Hadd'
     W0W0 = W0'*W0
     H0H0 = H0*H0'
+    if sum(abs, Hadd) <=1e-12
+        warn("Hadd is numerically zero.")
+    end
     invHH = inv(HH)
     A = W0W0.*(H0H0-H0Hadd*invHH*H0Hadd')
     W0tXH0t = W0'*X*H0'
@@ -211,5 +250,22 @@ function init2r(U, Vt)
     H = H[keep, :]
     return W, H
 end
+
+function truncatepos(Y, X, W, H)
+    ΔX = max.(zero(eltype(X)), X - W*H)
+    Yout = similar(Y)
+    for j in axes(Y, 2)
+        y = view(Y, :, j)
+        yp = max.(y, zero(eltype(y)))
+        ym = max.(-y, zero(eltype(y)))
+        if sum(ΔX * yp) >= sum(ΔX * ym)
+            Yout[:, j] = yp
+        else
+            Yout[:, j] = ym
+        end
+    end
+    return Yout
+end
+
 
 end
