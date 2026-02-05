@@ -2,6 +2,7 @@ module GsvdInitialization
 
 using LinearAlgebra, NMF, TSVD
 using NonNegLeastSquares
+using Kronecker, SparseArrays 
 
 export gsvdnmf,
        gsvdrecover
@@ -33,6 +34,7 @@ Other keyword arguments are passed to `NMF.nnmf`.
 function gsvdnmf(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, f;
                  n2 = size(first(f), 2),
                  tol_nmf=1e-4,
+                 alg = :cd,
                  kwargs...)
     n1 = size(W, 2)
     kadd = n2 - n1
@@ -42,9 +44,14 @@ function gsvdnmf(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, f;
     if kadd == 0
         return W, H
     else
-        W_recover, H_recover = gsvdrecover(X, copy(W), copy(H), kadd, f)
-        result_recover = nnmf(X, n2; kwargs..., init=:custom, tol=tol_nmf, W0=W_recover, H0=H_recover)
-        return result_recover.W, result_recover.H
+        # @show alg
+        W_recover, H_recover, _ = gsvdrecover(X, copy(W), copy(H), kadd, f)
+        if alg == :multmse
+            @show alg
+            W_recover, H_recover = max.(W_recover, 1e-5), max.(H_recover, 1e-5)
+        end
+        result_recover = nnmf(X, n2; kwargs..., init=:custom, tol=tol_nmf, W0=copy(W_recover), H0=copy(H_recover))
+        return result_recover, result_recover.W, result_recover.H
     end
 end
 gsvdnmf(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, n2::Int; kwargs...) = gsvdnmf(X, W, H, tsvd(X, n2); kwargs...)
@@ -126,6 +133,38 @@ function gsvdrecover(X::AbstractArray, W0::AbstractArray, H0::AbstractArray, kad
     end
 end
 
+function gsvdrecover(X::AbstractArray, W0::AbstractArray, H0::AbstractArray, kadd::Int, f::Tuple; initW::Symbol = :standard, kwargs...)
+    m, n = size(W0)
+    kadd <= n || throw(ArgumentError("# of extra columns must less than 1st NMF components"))
+    if kadd == 0
+        return W0, H0, 0
+    else
+        U0, S0, V0 = f
+        U0, S0, V0 = U0[:,1:n], S0[1:n], V0[:,1:n]
+        Hadd, Λ = init_H(U0, S0, V0, W0, H0, kadd)
+        if initW == :standard
+            Wadd, a = init_W(X, W0, H0, Hadd)
+            Wadd_nn, Hadd_nn = NMF.nndsvd(X, kadd, initdata = (U = Wadd, S = ones(kadd), V = Hadd'))
+            W0_1, H0_1 = [repeat(a', m, 1).*W0 Wadd_nn], [H0; Hadd_nn]
+            cs = Wcols_modification(X, W0_1, H0_1)
+            W0_2, H0_2 = repeat(cs', m, 1).*W0_1, H0_1
+        elseif initW == :joint
+            W0_2, H0_2 = gsvdrecover_Wa(X, W0, H0, Hadd; kwargs...)
+        else
+            throw(ArgumentError("Unknown initW method: $initW"))
+        end
+        return abs.(W0_2), abs.(H0_2), Λ
+    end
+end
+
+function gsvdrecover_Wa(X::AbstractArray, W0::AbstractArray, H0::AbstractArray, Hadd::AbstractArray; kwargs...)
+    m = size(W0, 1)
+    Hadd_nn = truncatepos(Hadd', X, W0, H0)'
+    Wadd, a = init_Wa(X, W0, H0, Hadd_nn; kwargs...)
+    W0_1, H0_1 = [repeat(a', m, 1).*W0 Wadd], [H0; Hadd_nn]
+    return abs.(W0_1), abs.(H0_1), Λ
+end
+
 function init_H(U0::AbstractArray, S0::AbstractArray, V0::AbstractArray, W0::AbstractArray, H0::AbstractArray, kadd::Int)
     _, _, Q, D1, D2, R = svd(Matrix(Diagonal(S0)), (U0'*W0)*(H0*V0));
     inv_RQt = inv(R*Q')
@@ -138,7 +177,45 @@ function init_H(U0::AbstractArray, S0::AbstractArray, V0::AbstractArray, W0::Abs
     H_index = sortperm(Λ, rev = true)[1:kadd]
     Hadd = inv_RQt[:, H_index]
     Hadd_1 = V0*Hadd
-    return Hadd_1', Λ[H_index]
+    return Hadd_1', Λ
+end
+
+function init_Wa(X::AbstractArray{T}, W0::AbstractArray{T}, H0::AbstractArray{T}, Hadd::AbstractArray{T}; kwargs...) where T
+    m = size(X, 1)
+    kadd = size(Hadd, 1)
+    G = gram_sp_C(W0, H0, Hadd)[1]
+    b = gram_b(X, W0, H0, Hadd)
+    θ = nonneg_lsq(G, b; alg=:fnnls, gram=true, kwargs...)
+    Wadd = reshape(θ[1:m*kadd], m, kadd)
+    α = θ[m*kadd+1:end]
+    return Wadd, α
+end
+
+function gram_sp_C(W0, H0, Hadd)
+    m, r0 = size(W0)
+    k = size(Hadd, 1)
+    mk = m*k
+    W0W0, H0H0 = W0'*W0, H0*H0'
+    P = Hadd*H0'
+    HH = Hadd*Hadd'
+    G22 = sparse(W0W0.*H0H0)
+    G12 = zeros(Float64, mk, r0)
+    for j in 1:r0
+        G12[:,j] .= vec(W0[:,j] * P[:,j]')
+    end
+    G12 = sparse(G12)
+    G11 = kronecker(HH, sparse(I, m, m))
+    G = [G11 G12; G12' G22]
+    return G, G11, G12, G22
+end
+
+function gram_b(X, W0, H0, Hadd)
+    m, r0 = size(W0)
+    k = size(Hadd, 1)
+    b = zeros(Float64, m*k + r0)
+    b[1:m*k] = vec(X * Hadd')
+    b[m*k+1:end] = diag(W0' * X * H0')
+    return b
 end
 
 function init_W(X::AbstractArray{T}, W0::AbstractArray{T}, H0::AbstractArray{T}, Hadd::AbstractArray{T}; α = nothing) where T
@@ -175,5 +252,22 @@ function Wcols_modification(X::AbstractArray{T}, W::AbstractArray{T}, H::Abstrac
     β = nonneg_lsq(B, a; alg=:fnnls, gram=true)
     return β[:]
 end
+
+function truncatepos(Y, X, W, H)
+    ΔX = max.(zero(eltype(X)), X - W*H)
+    Yout = similar(Y)
+    for j in axes(Y, 2)
+        y = view(Y, :, j)
+        yp = max.(y, zero(eltype(y)))
+        ym = max.(-y, zero(eltype(y)))
+        if sum(ΔX * yp) >= sum(ΔX * ym)
+            Yout[:, j] = yp
+        else
+            Yout[:, j] = ym
+        end
+    end
+    return Yout
+end
+
 
 end
