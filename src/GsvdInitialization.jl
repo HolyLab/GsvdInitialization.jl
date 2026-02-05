@@ -35,6 +35,7 @@ function gsvdnmf(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, f;
                  n2 = size(first(f), 2),
                  tol_nmf=1e-4,
                  alg = :cd,
+                 initW = :standard,
                  kwargs...)
     n1 = size(W, 2)
     kadd = n2 - n1
@@ -45,7 +46,7 @@ function gsvdnmf(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, f;
         return W, H
     else
         # @show alg
-        W_recover, H_recover, _ = gsvdrecover(X, copy(W), copy(H), kadd, f)
+        W_recover, H_recover, _ = gsvdrecover(X, copy(W), copy(H), kadd, f; initW=initW)
         if alg == :multmse
             @show alg
             W_recover, H_recover = max.(W_recover, 1e-5), max.(H_recover, 1e-5)
@@ -80,13 +81,13 @@ Keyword arguments:
 
 Other keyword arguments are passed to `NMF.nnmf`.
 """
-function gsvdnmf(X::AbstractMatrix, ncomponents::Pair{Int,Int}; tol_final=1e-4, tol_intermediate=tol_final, kwargs...)
+function gsvdnmf(X::AbstractMatrix, ncomponents::Pair{Int,Int}; tol_final=1e-4, tol_intermediate=tol_final, initW = :standard, kwargs...)
     n1, n2 = ncomponents
     f = tsvd(X, n2)
     W0, H0 = NMF.nndsvd(X, n1; initdata = (U = f[1], S = f[2], V = f[3]))
     result_initial_nmf = nnmf(X, n1; kwargs..., init=:custom, tol=tol_intermediate, W0=copy(W0), H0=copy(H0))
     W_initial_nmf, H_initial_nmf = result_initial_nmf.W, result_initial_nmf.H
-    return gsvdnmf(X, W_initial_nmf, H_initial_nmf, f; kwargs..., n2=n2, tol_nmf=tol_final)
+    return gsvdnmf(X, W_initial_nmf, H_initial_nmf, f; kwargs..., n2=n2, tol_nmf=tol_final, initW=initW)
 end
 gsvdnmf(X::AbstractMatrix, ncomponents_final::Integer; kwargs...) = gsvdnmf(X, ncomponents_final-1 => ncomponents_final; kwargs...)
 
@@ -115,24 +116,6 @@ Arguments:
 
 `f`: SVD (or Truncated SVD) of `X`
 """
-function gsvdrecover(X::AbstractArray, W0::AbstractArray, H0::AbstractArray, kadd::Int, f::Tuple)
-    m, n = size(W0)
-    kadd <= n || throw(ArgumentError("# of extra columns must less than 1st NMF components"))
-    if kadd == 0
-        return W0, H0, 0
-    else
-        U0, S0, V0 = f
-        U0, S0, V0 = U0[:,1:n], S0[1:n], V0[:,1:n]
-        Hadd, Λ = init_H(U0, S0, V0, W0, H0, kadd)
-        Wadd, a = init_W(X, W0, H0, Hadd)
-        Wadd_nn, Hadd_nn = NMF.nndsvd(X, kadd, initdata = (U = Wadd, S = ones(kadd), V = Hadd'))
-        W0_1, H0_1 = [repeat(a', m, 1).*W0 Wadd_nn], [H0; Hadd_nn]
-        cs = Wcols_modification(X, W0_1, H0_1)
-        W0_2, H0_2 = repeat(cs', m, 1).*W0_1, H0_1
-        return abs.(W0_2), abs.(H0_2), Λ
-    end
-end
-
 function gsvdrecover(X::AbstractArray, W0::AbstractArray, H0::AbstractArray, kadd::Int, f::Tuple; initW::Symbol = :standard, kwargs...)
     m, n = size(W0)
     kadd <= n || throw(ArgumentError("# of extra columns must less than 1st NMF components"))
@@ -157,12 +140,12 @@ function gsvdrecover(X::AbstractArray, W0::AbstractArray, H0::AbstractArray, kad
     end
 end
 
-function gsvdrecover_Wa(X::AbstractArray, W0::AbstractArray, H0::AbstractArray, Hadd::AbstractArray; kwargs...)
+function gsvdrecover_Wa(X::AbstractArray, W0::AbstractArray, H0::AbstractArray, Hadd::AbstractArray)
     m = size(W0, 1)
     Hadd_nn = truncatepos(Hadd', X, W0, H0)'
-    Wadd, a = init_Wa(X, W0, H0, Hadd_nn; kwargs...)
+    Wadd, a = init_Wa(X, W0, H0, Hadd_nn)
     W0_1, H0_1 = [repeat(a', m, 1).*W0 Wadd], [H0; Hadd_nn]
-    return abs.(W0_1), abs.(H0_1), Λ
+    return abs.(W0_1), abs.(H0_1)
 end
 
 function init_H(U0::AbstractArray, S0::AbstractArray, V0::AbstractArray, W0::AbstractArray, H0::AbstractArray, kadd::Int)
@@ -180,12 +163,12 @@ function init_H(U0::AbstractArray, S0::AbstractArray, V0::AbstractArray, W0::Abs
     return Hadd_1', Λ
 end
 
-function init_Wa(X::AbstractArray{T}, W0::AbstractArray{T}, H0::AbstractArray{T}, Hadd::AbstractArray{T}; kwargs...) where T
+function init_Wa(X::AbstractArray{T}, W0::AbstractArray{T}, H0::AbstractArray{T}, Hadd::AbstractArray{T}) where T
     m = size(X, 1)
     kadd = size(Hadd, 1)
     G = gram_sp_C(W0, H0, Hadd)[1]
     b = gram_b(X, W0, H0, Hadd)
-    θ = nonneg_lsq(G, b; alg=:fnnls, gram=true, kwargs...)
+    θ = nonneg_lsq(G, b; alg=:fnnls, gram=true)
     Wadd = reshape(θ[1:m*kadd], m, kadd)
     α = θ[m*kadd+1:end]
     return Wadd, α
