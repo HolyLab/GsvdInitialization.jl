@@ -193,11 +193,7 @@ function gram_sp_C(W0, H0, Hadd)
 end
 
 function gram_b(X, W0, H0, Hadd)
-    m, r0 = size(W0)
-    k = size(Hadd, 1)
-    b = zeros(Float64, m*k + r0)
-    b[1:m*k] = vec(X * Hadd')
-    b[m*k+1:end] = diag(W0' * X * H0')
+    b = vcat(vec(X * Hadd'), diag(W0' * X * H0'))
     return b
 end
 
