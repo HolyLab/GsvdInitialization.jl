@@ -12,6 +12,8 @@ SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 TSVD = "9449cd9e-2762-5aa3-a617-5413e99d722e"
 
 [compat]
+FileIO = "1.18"
+JLD2 = "0.6"
 Kronecker = "0.5"
 LinearAlgebra = "1"
 NMF = "1"
