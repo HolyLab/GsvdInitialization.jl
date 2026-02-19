@@ -36,6 +36,7 @@ function gsvdnmf(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, f;
                  tol_nmf=1e-4,
                  alg = :cd,
                  initW = :standard,
+                 nmfdisturb = 1e-5,
                  kwargs...)
     n1 = size(W, 2)
     kadd = n2 - n1
@@ -45,11 +46,9 @@ function gsvdnmf(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, f;
     if kadd == 0
         return W, H
     else
-        # @show alg
         W_recover, H_recover, _ = gsvdrecover(X, copy(W), copy(H), kadd, f; initW=initW)
         if alg == :multmse
-            @show alg
-            W_recover, H_recover = max.(W_recover, 1e-5), max.(H_recover, 1e-5)
+            W_recover, H_recover = max.(W_recover, nmfdisturb), max.(H_recover, nmfdisturb)
         end
         result_recover = nnmf(X, n2; kwargs..., init=:custom, tol=tol_nmf, W0=copy(W_recover), H0=copy(H_recover))
         return result_recover, result_recover.W, result_recover.H
