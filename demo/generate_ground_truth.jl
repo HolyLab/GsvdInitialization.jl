@@ -42,7 +42,7 @@ function gaussiantemplate(T::Type, r::Real)
 end
 gaussiantemplate(r::Real) = gaussiantemplate(Float64, r)
 
-load_svd_of_gt() = load(joinpath(pwd(), "demo/svd_of_GT.jld2"))["svdX"]
+load_svd_of_gt() = load(joinpath(dirname(@__DIR__), "demo/svd_of_GT.jld2"))["svdX"]
 
 
 
