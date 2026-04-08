@@ -1,31 +1,31 @@
 using GsvdInitialization
 using Test
 
-using LinearAlgebra, NMF
+using LinearAlgebra, NMF, FileIO
 
 include(joinpath(dirname(@__DIR__), "demo/generate_ground_truth.jl"))
 
 W_GT, H_GT = generate_ground_truth()
+svdX = load_svd_of_gt()
 
 @testset "test top wrapper" begin
     W = W_GT
     H = H_GT
     X = W*H
-    standard_nmf = nnmf(X, 10; alg = :cd, init=:nndsvd, tol=1e-4, initdata = svd(float(X)))
-    W_gsvd, H_gsvd = gsvdnmf(X, 9=>10; alg = :cd, maxiter = 10^5, tol_final=1e-4, tol_intermediate = 1e-4);
-    img_tol_int = sum(abs2, X)
+    standard_nmf = nnmf(X, 10; alg = :cd, init=:nndsvd, tol=1e-4, maxiter = 10^5, initdata = svdX)
+    _, W_gsvd, H_gsvd = gsvdnmf(X, 9=>10; alg = :cd, maxiter = 10^5, tol_final=1e-4, tol_intermediate = 1e-4);
     @test size(W_gsvd, 2) == 10
-    @test sum(abs2, X-standard_nmf.W*standard_nmf.H)/sum(abs2, X) > sum(abs2, X-W_gsvd*H_gsvd)/sum(abs2, X)
     @test sum(abs2, X-W_gsvd*H_gsvd)/sum(abs2, X) < 2e-10
+    @test sum(abs2, X-standard_nmf.W*standard_nmf.H)/sum(abs2, X) > sum(abs2, X-W_gsvd*H_gsvd)/sum(abs2, X)
 
     X = rand(30, 20)
-    W_gsvd_1, H_gsvd_1 = gsvdnmf(X, 10; alg=:cd)
-    W_gsvd_2, H_gsvd_2 = gsvdnmf(X, 9 => 10; alg=:cd)
+    _, W_gsvd_1, H_gsvd_1 = gsvdnmf(X, 10; alg=:cd)
+    _, W_gsvd_2, H_gsvd_2 = gsvdnmf(X, 9 => 10; alg=:cd)
     @test sum(abs2, W_gsvd_1-W_gsvd_2) <= 1e-12
     @test sum(abs2, H_gsvd_1-H_gsvd_2) <= 1e-12
 end
 
-@testset "GsvdInitialization.jl" begin
+@testset "GsvdInitialization" begin
     W, H = rand(10, 3), rand(3, 8)
     X = W*H
     U, S, V = svd(X)
@@ -52,5 +52,33 @@ end
     β0 = rand(3)
     β = GsvdInitialization.Wcols_modification(X, repeat(β0', size(W, 1)).*W, H)
     @test β.*β0 ≈ ones(3)
+
+end
+
+@testset "joint optimize W and alpha" begin
+    W = W_GT
+    H = H_GT
+    X = W*H
+    _, W_gsvd, H_gsvd = gsvdnmf(X, 9=>10; alg = :cd, maxiter = 10^5, tol_final=1e-4, tol_intermediate = 1e-4, initW=:joint);
+    @test size(W_gsvd, 2) == 10
+    @test sum(abs2, X-W_gsvd*H_gsvd)/sum(abs2, X) < 2e-10
+
+    W, H = rand(10, 3), rand(3, 8)
+    X = W*H
+    U, S, V = svd(X)
+
+    W0, H0 = copy(W), copy(H)
+    Hadd = rand(2, 8)
+    Wadd, a = GsvdInitialization.init_Wa(X, W0, H0, Hadd)
+    @test a ≈ ones(size(W0, 2))
+    @test norm(Wadd) <= 1e-8
+
+    G = GsvdInitialization.gram_sp_C(W0, H0, Hadd)[1]
+    b = GsvdInitialization.gram_b(X, W0, H0, Hadd)
+    Wadd = rand(10, 2)
+    α = rand(3)
+    θ = vcat(vec(Wadd), α)
+    E = θ'*G*θ-2*b'*θ+sum(abs2, X)
+    @test abs(E-sum(abs2, X-[repeat(α', size(W0, 1)).*W0 Wadd]*[H0;Hadd])) <= 1e-12
 
 end

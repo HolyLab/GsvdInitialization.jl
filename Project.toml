@@ -1,15 +1,20 @@
 name = "GsvdInitialization"
 uuid = "2ac24108-be9c-42b8-8d78-6a4f62a87e7d"
-authors = ["youdongguo <1010705897@qq.com> and contributors"]
 version = "1.0.0"
+authors = ["youdongguo <1010705897@qq.com> and contributors"]
 
 [deps]
+Kronecker = "2c470bb0-bcc8-11e8-3dad-c9649493f05e"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 NMF = "6ef6ca0d-6ad7-5ff6-b225-e928bfa0a386"
 NonNegLeastSquares = "b7351bd1-99d9-5c5d-8786-f205a815c4d7"
+SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 TSVD = "9449cd9e-2762-5aa3-a617-5413e99d722e"
 
 [compat]
+FileIO = "1.18"
+JLD2 = "0.6"
+Kronecker = "0.5"
 LinearAlgebra = "1"
 NMF = "1"
 NonNegLeastSquares = "0.4"
@@ -17,8 +22,10 @@ TSVD = "0.4"
 julia = "1.10"
 
 [extras]
+FileIO = "5789e2e9-d7fb-5bc7-8068-2c6fae9b9549"
+JLD2 = "033835bb-8acc-5ee8-8aae-3f567f8a3819"
 NMF = "6ef6ca0d-6ad7-5ff6-b225-e928bfa0a386"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [targets]
-test = ["NMF", "Test"]
+test = ["NMF", "Test", "FileIO", "JLD2"]
