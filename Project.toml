@@ -1,6 +1,6 @@
 name = "GsvdInitialization"
 uuid = "2ac24108-be9c-42b8-8d78-6a4f62a87e7d"
-version = "1.1.0"
+version = "1.1.1"
 authors = ["youdongguo <1010705897@qq.com> and contributors"]
 
 [deps]

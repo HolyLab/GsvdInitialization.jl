@@ -53,6 +53,17 @@ end
     β = GsvdInitialization.Wcols_modification(X, repeat(β0', size(W, 1)).*W, H)
     @test β.*β0 ≈ ones(3)
 
+    # When H0 is parallel to Hadd the Schur complement vanishes and A = 0, making
+    # the QP degenerate.  init_W must return finite results rather than throwing
+    # SingularException (which fnnls raises on Julia ≥ 1.12 for a zero pivot).
+    W0_deg = rand(Float64, 5, 1)
+    H0_deg = rand(Float64, 1, 8)
+    X_deg  = W0_deg * H0_deg
+    Hadd_deg = H0_deg   # parallel to H0 → Schur complement = 0 → A = 0
+    Wadd_deg, a_deg = GsvdInitialization.init_W(X_deg, W0_deg, H0_deg, Hadd_deg)
+    @test all(isfinite, Wadd_deg)
+    @test all(isfinite, a_deg)
+
 end
 
 @testset "joint optimize W and alpha" begin

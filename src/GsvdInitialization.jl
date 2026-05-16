@@ -198,8 +198,17 @@ end
 
 function init_W(X::AbstractArray{T}, W0::AbstractArray{T}, H0::AbstractArray{T}, Hadd::AbstractArray{T}; α = nothing) where T
     A, b, _, invHH, H0Hadd, XHaddt = obj_para(X, W0, H0, Hadd)
-    (isposdef(A) || sum(abs2, A) <= 1e-12) || @warn "A is not positive definite."
-    α = α === nothing ? nonneg_lsq(A, -b; alg=:fnnls, gram=true) : α
+    if α === nothing
+        if isposdef(A)
+            α = nonneg_lsq(A, -b; alg=:fnnls, gram=true)
+        else
+            # A is not positive definite: the QP min_{α≥0} α'Aα + 2b'α has no
+            # unique bounded minimum, so fnnls is not meaningful.  Fall back to
+            # α = 1 (keep existing components at their current scale).
+            sum(abs2, A) <= 1e-12 || @warn "A is not positive definite."
+            α = ones(T, size(A, 1))
+        end
+    end
     Wadd = XHaddt*invHH-W0*Diagonal(α[:])*H0Hadd*invHH
     return Wadd, abs.(α)
 end
