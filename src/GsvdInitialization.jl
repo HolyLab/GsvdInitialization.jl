@@ -115,7 +115,7 @@ Arguments:
 
 `f`: SVD (or Truncated SVD) of `X`
 """
-function gsvdrecover(X::AbstractArray, W0::AbstractArray, H0::AbstractArray, kadd::Int, f::Tuple; initW::Symbol = :standard, kwargs...)
+function gsvdrecover(X, W0::AbstractArray, H0::AbstractArray, kadd::Int, f::Tuple; initW::Symbol = :standard, kwargs...)
     m, n = size(W0)
     kadd <= n || throw(ArgumentError("# of extra columns must less than 1st NMF components"))
     if kadd == 0
@@ -196,7 +196,7 @@ function gram_b(X, W0, H0, Hadd)
     return b
 end
 
-function init_W(X::AbstractArray{T}, W0::AbstractArray{T}, H0::AbstractArray{T}, Hadd::AbstractArray{T}; α = nothing) where T
+function init_W(X, W0::AbstractArray{T}, H0::AbstractArray{T}, Hadd::AbstractArray{T}; α = nothing) where T
     A, b, _, invHH, H0Hadd, XHaddt = obj_para(X, W0, H0, Hadd)
     if α === nothing
         if isposdef(A)
@@ -213,7 +213,7 @@ function init_W(X::AbstractArray{T}, W0::AbstractArray{T}, H0::AbstractArray{T},
     return Wadd, abs.(α)
 end
 
-function obj_para(X::AbstractArray{T}, W0::AbstractArray{T}, H0::AbstractArray{T}, Hadd::AbstractArray{T}) where T
+function obj_para(X, W0::AbstractArray{T}, H0::AbstractArray{T}, Hadd::AbstractArray{T}) where T
     XHaddt = X*Hadd'
     H0Hadd = H0*Hadd'
     HH = Hadd*Hadd'
@@ -228,7 +228,7 @@ function obj_para(X::AbstractArray{T}, W0::AbstractArray{T}, H0::AbstractArray{T
     return Symmetric(A), b, C, invHH, H0Hadd, XHaddt
 end
 
-function Wcols_modification(X::AbstractArray{T}, W::AbstractArray{T}, H::AbstractArray{T}) where T
+function Wcols_modification(X, W::AbstractArray{T}, H::AbstractArray{T}) where T
     n = size(W, 2)
     a = Array{T}(undef, n)
     B = Array{T}(undef, n, n)

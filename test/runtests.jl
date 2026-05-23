@@ -3,6 +3,24 @@ using Test
 
 using LinearAlgebra, NMF, FileIO
 
+# Minimal `Factorization` subtype that implements just the matrix products and
+# `sum(abs2, ·)` that `gsvdrecover` calls on `X`.  Used to verify that
+# `gsvdrecover` and its helpers accept any `X` for which those operations
+# work — *not* only `AbstractArray` — so that callers can pass low-rank
+# representations (e.g. `FactoredMatrices.FactoredMatrix`) without ever
+# materializing the dense product.  Deliberately not `<: AbstractMatrix` so a
+# regression that tightens the signatures back to `AbstractArray{T}` fails this
+# test rather than silently materializing via `getindex` fallback.
+struct MockFactored{T} <: LinearAlgebra.Factorization{T}
+    U::Matrix{T}
+    V::Matrix{T}
+end
+Base.size(F::MockFactored) = (size(F.U, 1), size(F.V, 2))
+Base.size(F::MockFactored, d) = d == 1 ? size(F.U, 1) : (d == 2 ? size(F.V, 2) : 1)
+Base.:*(F::MockFactored, A::AbstractMatrix) = F.U * (F.V * A)
+Base.:*(A::AbstractMatrix, F::MockFactored) = (A * F.U) * F.V
+Base.sum(::typeof(abs2), F::MockFactored) = sum((F.U' * F.U) .* (F.V * F.V'))
+
 include(joinpath(dirname(@__DIR__), "demo/generate_ground_truth.jl"))
 
 W_GT, H_GT = generate_ground_truth()
@@ -63,7 +81,40 @@ end
     Wadd_deg, a_deg = GsvdInitialization.init_W(X_deg, W0_deg, H0_deg, Hadd_deg)
     @test all(isfinite, Wadd_deg)
     @test all(isfinite, a_deg)
+end
 
+# `gsvdrecover` and its helpers accept any `X` for which `X * Y`, `Y * X`, and
+# `sum(abs2, X)` are defined.  Passing a non-`AbstractArray` `X` (e.g. a
+# `LinearAlgebra.Factorization` subtype that stores a low-rank form) lets the
+# dense product never be materialized, which matters when `X` would otherwise
+# be the largest array per call.
+@testset "non-AbstractArray X" begin
+    U = rand(10, 3)
+    V = rand(3, 8)
+    Xdense = U * V
+    Xfact  = MockFactored(U, V)
+    W0, H0 = rand(10, 4), rand(4, 8)
+    Hadd   = rand(2, 8)
+    fs     = svd(Xdense)
+    f      = (fs.U, fs.S, fs.V)
+
+    # `init_W` agrees across both X representations.
+    Wadd_d, a_d = GsvdInitialization.init_W(Xdense, W0, H0, Hadd)
+    Wadd_f, a_f = GsvdInitialization.init_W(Xfact,  W0, H0, Hadd)
+    @test Wadd_d ≈ Wadd_f
+    @test a_d    ≈ a_f
+
+    # `Wcols_modification` likewise.
+    β0 = rand(4)
+    W_scaled = repeat(β0', size(W0, 1)) .* W0
+    @test GsvdInitialization.Wcols_modification(Xdense, W_scaled, H0) ≈
+          GsvdInitialization.Wcols_modification(Xfact,  W_scaled, H0)
+
+    # End-to-end `gsvdrecover` agrees on the components it returns.
+    Wd, Hd, _ = GsvdInitialization.gsvdrecover(Xdense, copy(W0), copy(H0), 2, f)
+    Wf, Hf, _ = GsvdInitialization.gsvdrecover(Xfact,  copy(W0), copy(H0), 2, f)
+    @test Wd ≈ Wf
+    @test Hd ≈ Hf
 end
 
 @testset "joint optimize W and alpha" begin
