@@ -1,7 +1,12 @@
 using GsvdInitialization
 using Test
+using Aqua
 
 using LinearAlgebra, NMF, FileIO
+
+@testset "Aqua" begin
+    Aqua.test_all(GsvdInitialization)
+end
 
 # Minimal `Factorization` subtype that implements just the matrix products and
 # `sum(abs2, ·)` that `gsvdrecover` calls on `X`.  Used to verify that
