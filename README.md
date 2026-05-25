@@ -51,10 +51,13 @@ This factorization is not perfect as two components are the same and two feature
 Then, running GSVD-NMF on X (also using NNSVD as initialization) and computing the new reconstruction error:
 
 ```julia
-Wgsvd, Hgsvd = gsvdnmf(X, 9=>10; alg = :cd, tol_final = 1e-4, tol_intermediate = 1e-2, maxiter = 10^12);
+julia> result_gsvd, Λ = gsvdnmf(X, 9=>10; alg = :cd, tol_final = 1e-4, tol_intermediate = 1e-2, maxiter = 10^12);
+julia> Wgsvd, Hgsvd = result_gsvd.W, result_gsvd.H;
 julia> sum(abs2, X-Wgsvd*Hgsvd)/sum(abs2, X)
 1.2322603074132593e-10
 ```
+
+`Λ` is the vector of generalized singular values that ranked the candidate augmentation directions, useful as a diagnostic for understanding which directions the algorithm chose.
 An imperfect factorization from `nnmf` alone was augmented by `gsvdnmf` to a perfect factorization.
 Here are the new components:
 
@@ -65,14 +68,18 @@ Here are the new components:
 
 ## Functions
 
-W, H = **gsvdnmf**(X::AbstractMatrix, ncomponents::Pair{Int,Int}; 
-                   tol_final=1e-4, 
-                   tol_intermediate=1e-4, 
-                   kwargs...)
+result, Λ = **gsvdnmf**([strategy,] X::AbstractMatrix, ncomponents::Pair{Int,Int};
+                       tol_final=1e-4,
+                       tol_intermediate=1e-4,
+                       kwargs...)
 
 Perform "GSVD-NMF" on the data matrix `X`.
 
 Arguments:
+
+- `strategy`: optional augmentation strategy `(X, W0, H0, Hadd) -> (W_aug, H_aug)`.
+  Defaults to `GsvdInitialization.truncating`; pass `GsvdInitialization.joint_nnls`
+  for the alternative bundled strategy, or supply your own.
 
 - `X`: non-negative data matrix
 
@@ -93,14 +100,16 @@ Other keyword arguments are passed to `NMF.nnmf`.
 
 -----
 
-W, H = **gsvdnmf**(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, f;
-                   n2 = size(first(f), 2),
-                   tol_nmf=1e-4,
-                   kwargs...)
+result, Λ = **gsvdnmf**([strategy,] X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, f;
+                       n2 = size(first(f), 2),
+                       tol_nmf=1e-4,
+                       kwargs...)
 
 Augment `W` and `H` to have `n2` components, subsequently polished by NMF.
 
 Arguments:
+
+- `strategy`: see above. Defaults to `GsvdInitialization.truncating`.
 
 - `X`: non-negative data matrix
 
@@ -118,9 +127,12 @@ Other keyword arguments are passed to `NMF.nnmf`.
 
 -----
 
-Wadd, Hadd, S = **gsvdrecover**(X, W0, H0, kadd, f)
+Wadd, Hadd, S = **gsvdrecover**([strategy,] X, W0, H0, kadd, f)
 
 Augment components for `W` and `H` without polishing by NMF.
+`strategy` defaults to `GsvdInitialization.truncating`; pass
+`GsvdInitialization.joint_nnls` or a user-defined callable for alternative
+augmentation paths.
 
 Outputs:
 

@@ -45,16 +45,28 @@ svdX = load_svd_of_gt()
     H = H_GT
     X = W*H
     standard_nmf = nnmf(X, 10; alg = :cd, init=:nndsvd, tol=1e-4, maxiter = 10^5, initdata = svdX)
-    _, W_gsvd, H_gsvd = gsvdnmf(X, 9=>10; alg = :cd, maxiter = 10^5, tol_final=1e-4, tol_intermediate = 1e-4);
+    result_gsvd, Λ_gsvd = gsvdnmf(X, 9=>10; alg = :cd, maxiter = 10^5, tol_final=1e-4, tol_intermediate = 1e-4);
+    W_gsvd, H_gsvd = result_gsvd.W, result_gsvd.H
     @test size(W_gsvd, 2) == 10
     @test sum(abs2, X-W_gsvd*H_gsvd)/sum(abs2, X) < 2e-10
     @test sum(abs2, X-standard_nmf.W*standard_nmf.H)/sum(abs2, X) > sum(abs2, X-W_gsvd*H_gsvd)/sum(abs2, X)
+    @test length(Λ_gsvd) == 9
 
     X = rand(30, 20)
-    _, W_gsvd_1, H_gsvd_1 = gsvdnmf(X, 10; alg=:cd)
-    _, W_gsvd_2, H_gsvd_2 = gsvdnmf(X, 9 => 10; alg=:cd)
+    result_1, _ = gsvdnmf(X, 10; alg=:cd)
+    result_2, _ = gsvdnmf(X, 9 => 10; alg=:cd)
+    W_gsvd_1, H_gsvd_1 = result_1.W, result_1.H
+    W_gsvd_2, H_gsvd_2 = result_2.W, result_2.H
     @test sum(abs2, W_gsvd_1-W_gsvd_2) <= 1e-12
     @test sum(abs2, H_gsvd_1-H_gsvd_2) <= 1e-12
+
+    # n2 == size(W, 2) is a caller bug: there is nothing to augment.  Reject it
+    # eagerly rather than silently returning the input factorization.
+    Wfit, Hfit = rand(30, 5), rand(5, 20)
+    f = svd(X)
+    @test_throws ArgumentError gsvdnmf(X, Wfit, Hfit, (f.U, f.S, f.V); n2 = 5)
+    @test_throws "must be positive" gsvdnmf(X, Wfit, Hfit, (f.U, f.S, f.V); n2 = 5)
+    @test_throws "must be positive" gsvdrecover(X, Wfit, Hfit, 0, (f.U, f.S, f.V))
 end
 
 @testset "GsvdInitialization" begin
@@ -131,11 +143,28 @@ end
     @test Hd ≈ Hf
 end
 
+@testset "strategy dispatch" begin
+    X = rand(30, 20)
+    # explicit `truncating` matches the no-strategy default
+    r_default, _ = gsvdnmf(X, 9 => 10; alg = :cd)
+    r_explicit, _ = gsvdnmf(GsvdInitialization.truncating, X, 9 => 10; alg = :cd)
+    @test r_default.W ≈ r_explicit.W
+    @test r_default.H ≈ r_explicit.H
+
+    # do-block form: anonymous strategy that simply forwards to `truncating`
+    r_doblock, _ = gsvdnmf(X, 9 => 10; alg = :cd) do X0, W0, H0, Hadd
+        GsvdInitialization.truncating(X0, W0, H0, Hadd)
+    end
+    @test r_doblock.W ≈ r_default.W
+    @test r_doblock.H ≈ r_default.H
+end
+
 @testset "joint optimize W and alpha" begin
     W = W_GT
     H = H_GT
     X = W*H
-    _, W_gsvd, H_gsvd = gsvdnmf(X, 9=>10; alg = :cd, maxiter = 10^5, tol_final=1e-4, tol_intermediate = 1e-4, initW=:joint);
+    result_joint, _ = gsvdnmf(GsvdInitialization.joint_nnls, X, 9=>10; alg = :cd, maxiter = 10^5, tol_final=1e-4, tol_intermediate = 1e-4);
+    W_gsvd, H_gsvd = result_joint.W, result_joint.H
     @test size(W_gsvd, 2) == 10
     @test sum(abs2, X-W_gsvd*H_gsvd)/sum(abs2, X) < 2e-10
 
@@ -145,7 +174,7 @@ end
 
     W0, H0 = copy(W), copy(H)
     Hadd = rand(2, 8)
-    Wadd, a = GsvdInitialization.init_Wa(X, W0, H0, Hadd)
+    Wadd, a = GsvdInitialization.init_W_joint_nnls(X, W0, H0, Hadd)
     @test a ≈ ones(size(W0, 2))
     @test norm(Wadd) <= 1e-8
 

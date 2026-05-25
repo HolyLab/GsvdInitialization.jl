@@ -10,15 +10,25 @@ using SparseArrays: sparse
 export gsvdnmf,
        gsvdrecover
 
+@static if VERSION >= v"1.11"
+    eval(Meta.parse("public truncating, joint_nnls"))
+end
+
 """
-    W, H = gsvdnmf(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, f;
-                   n2 = size(first(f), 2),
-                   tol_nmf=1e-4,
-                   kwargs...)
+    result, Λ = gsvdnmf([strategy,] X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, f;
+                       n2 = size(first(f), 2),
+                       tol_nmf=1e-4,
+                       kwargs...)
 
 Augment `W` and `H` to have `n2` components, subsequently polished by NMF.
 
 Arguments:
+
+- `strategy`: a callable `(X, W0, H0, Hadd) -> (W_augmented, H_augmented)` that
+  produces fully-assembled non-negative augmented factors from the candidate
+  directions `Hadd` ranked by [`init_H`](@ref). Defaults to
+  [`GsvdInitialization.truncating`](@ref); [`GsvdInitialization.joint_nnls`](@ref) is
+  the alternative (joint-NNLS) strategy.
 
 - `X`: non-negative data matrix
 
@@ -33,38 +43,45 @@ Keyword arguments:
 - `tol_nmf`: the tolerance of  NMF polishing step, default: 1e-4
 
 Other keyword arguments are passed to `NMF.nnmf`.
+
+Returns the `NMF.NMFResult` from the polishing step (its `W` and `H` fields hold
+the augmented factors) and `Λ`, the generalized singular values that ranked the
+candidate augmentation directions.
 """
-function gsvdnmf(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, f;
+function gsvdnmf(strategy, X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, f;
                  n2 = size(first(f), 2),
                  tol_nmf=1e-4,
                  alg = :cd,
-                 initW = :standard,
                  truncmult = 1e-5,
                  kwargs...)
     n1 = size(W, 2)
     kadd = n2 - n1
-    kadd >= 0 || throw(ArgumentError("The number of components to add must be non-negative"))
+    kadd > 0 || throw(ArgumentError("The number of components to add must be positive; got n2 = $n2, size(W, 2) = $n1"))
     kadd <= n1 || throw(ArgumentError("The number of components to add must be less than initial number of components"))
     size(first(f), 2) >= n1 || throw(ArgumentError("The supplied SVD does not have enough components"))
-    if kadd == 0
-        return W, H
-    else
-        W_recover, H_recover, _ = gsvdrecover(X, copy(W), copy(H), kadd, f; initW=initW)
-        if alg == :multmse
-            W_recover, H_recover = max.(W_recover, truncmult), max.(H_recover, truncmult)
-        end
-        result_recover = nnmf(X, n2; kwargs..., init=:custom, tol=tol_nmf, W0=copy(W_recover), H0=copy(H_recover))
-        return result_recover, result_recover.W, result_recover.H
+    W_recover, H_recover, Λ = gsvdrecover(strategy, X, copy(W), copy(H), kadd, f)
+    if alg == :multmse
+        W_recover, H_recover = max.(W_recover, truncmult), max.(H_recover, truncmult)
     end
+    result_recover = nnmf(X, n2; kwargs..., init=:custom, tol=tol_nmf, W0=copy(W_recover), H0=copy(H_recover))
+    return result_recover, Λ
 end
-gsvdnmf(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, n2::Int; kwargs...) = gsvdnmf(X, W, H, tsvd(X, n2); kwargs...)
+gsvdnmf(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, f; kwargs...) =
+    gsvdnmf(truncating, X, W, H, f; kwargs...)
+gsvdnmf(strategy, X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, n2::Int; kwargs...) =
+    gsvdnmf(strategy, X, W, H, tsvd(X, n2); kwargs...)
+gsvdnmf(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, n2::Int; kwargs...) =
+    gsvdnmf(truncating, X, W, H, n2; kwargs...)
 
 """
-    W, H = gsvdnmf(X::AbstractMatrix, ncomponents::Pair{Int,Int}; tol_final=1e-4, tol_intermediate=1e-4, kwargs...)
+    result, Λ = gsvdnmf([strategy,] X::AbstractMatrix, ncomponents::Pair{Int,Int}; tol_final=1e-4, tol_intermediate=1e-4, kwargs...)
 
 Perform "GSVD-NMF" on the data matrix `X`.
 
 Arguments:
+
+- `strategy`: see the four-argument [`gsvdnmf`](@ref) method. Defaults to
+  [`GsvdInitialization.truncating`](@ref).
 
 - `X`: non-negative data matrix
 
@@ -83,20 +100,31 @@ Keyword arguments:
 
 Other keyword arguments are passed to `NMF.nnmf`.
 """
-function gsvdnmf(X::AbstractMatrix, ncomponents::Pair{Int,Int}; tol_final=1e-4, tol_intermediate=tol_final, initW = :standard, kwargs...)
+function gsvdnmf(strategy, X::AbstractMatrix, ncomponents::Pair{Int,Int}; tol_final=1e-4, tol_intermediate=tol_final, kwargs...)
     n1, n2 = ncomponents
     f = tsvd(X, n2)
     W0, H0 = nndsvd(X, n1; initdata = (U = f[1], S = f[2], V = f[3]))
     result_initial_nmf = nnmf(X, n1; kwargs..., init=:custom, tol=tol_intermediate, W0=copy(W0), H0=copy(H0))
     W_initial_nmf, H_initial_nmf = result_initial_nmf.W, result_initial_nmf.H
-    return gsvdnmf(X, W_initial_nmf, H_initial_nmf, f; kwargs..., n2=n2, tol_nmf=tol_final, initW=initW)
+    return gsvdnmf(strategy, X, W_initial_nmf, H_initial_nmf, f; kwargs..., n2=n2, tol_nmf=tol_final)
 end
-gsvdnmf(X::AbstractMatrix, ncomponents_final::Integer; kwargs...) = gsvdnmf(X, ncomponents_final-1 => ncomponents_final; kwargs...)
+gsvdnmf(X::AbstractMatrix, ncomponents::Pair{Int,Int}; kwargs...) =
+    gsvdnmf(truncating, X, ncomponents; kwargs...)
+gsvdnmf(strategy, X::AbstractMatrix, ncomponents_final::Integer; kwargs...) =
+    gsvdnmf(strategy, X, ncomponents_final-1 => ncomponents_final; kwargs...)
+gsvdnmf(X::AbstractMatrix, ncomponents_final::Integer; kwargs...) =
+    gsvdnmf(truncating, X, ncomponents_final; kwargs...)
 
 """
-    Wadd, Hadd, S = gsvdrecover(X, W0, H0, kadd, f)
+    Wadd, Hadd, S = gsvdrecover([strategy,] X, W0, H0, kadd, f)
 
 Augment components for `W` and `H` without polishing by NMF.
+
+`strategy` is a callable `(X, W0, H0, Hadd) -> (W_augmented, H_augmented)` that
+produces fully-assembled non-negative augmented factors from the candidate
+directions `Hadd` ranked by [`init_H`](@ref). Defaults to
+[`GsvdInitialization.truncating`](@ref); [`GsvdInitialization.joint_nnls`](@ref) is the
+alternative bundled strategy.
 
 Outputs:
 
@@ -118,34 +146,52 @@ Arguments:
 
 `f`: SVD (or Truncated SVD) of `X`
 """
-function gsvdrecover(X, W0::AbstractArray, H0::AbstractArray, kadd::Int, f::Tuple; initW::Symbol = :standard, kwargs...)
-    m, n = size(W0)
+function gsvdrecover(strategy, X, W0::AbstractArray, H0::AbstractArray, kadd::Int, f)
+    _, n = size(W0)
+    kadd > 0 || throw(ArgumentError("kadd must be positive; got $kadd"))
     kadd <= n || throw(ArgumentError("# of extra columns must less than 1st NMF components"))
-    if kadd == 0
-        return W0, H0, 0
-    else
-        U0, S0, V0 = f
-        U0, S0, V0 = U0[:,1:n], S0[1:n], V0[:,1:n]
-        Hadd, Λ = init_H(U0, S0, V0, W0, H0, kadd)
-        if initW == :standard
-            Wadd, a = init_W(X, W0, H0, Hadd)
-            Wadd_nn, Hadd_nn = nndsvd(X, kadd, initdata = (U = Wadd, S = ones(kadd), V = Hadd'))
-            W0_1, H0_1 = [repeat(a', m, 1).*W0 Wadd_nn], [H0; Hadd_nn]
-            cs = Wcols_modification(X, W0_1, H0_1)
-            W0_2, H0_2 = repeat(cs', m, 1).*W0_1, H0_1
-        elseif initW == :joint
-            W0_2, H0_2 = gsvdrecover_Wa(X, W0, H0, Hadd; kwargs...)
-        else
-            throw(ArgumentError("Unknown initW method: $initW"))
-        end
-        return abs.(W0_2), abs.(H0_2), Λ
-    end
+    U0, S0, V0 = f
+    U0, S0, V0 = U0[:,1:n], S0[1:n], V0[:,1:n]
+    Hadd, Λ = init_H(U0, S0, V0, W0, H0, kadd)
+    W, H = strategy(X, W0, H0, Hadd)
+    return W, H, Λ
+end
+gsvdrecover(X, W0::AbstractArray, H0::AbstractArray, kadd::Int, f) =
+    gsvdrecover(truncating, X, W0, H0, kadd, f)
+
+"""
+    truncating(X, W0, H0, Hadd) -> (W_augmented, H_augmented)
+
+Default `gsvdrecover` strategy. Restricts the use of nonnegative least-squares (NNLS)
+to the component weights `α`, and uses least-squares followed by an NNDSVD step
+to solve for the new columns of `W` (i.e., `Wadd`).
+
+Returns non-negative `(W_augmented, H_augmented)`.
+"""
+function truncating(X, W0::AbstractArray, H0::AbstractArray, Hadd::AbstractArray)
+    m = size(W0, 1)
+    kadd = size(Hadd, 1)
+    Wadd, a = init_W(X, W0, H0, Hadd)
+    Wadd_nn, Hadd_nn = nndsvd(X, kadd, initdata = (U = Wadd, S = ones(kadd), V = Hadd'))
+    W0_1, H0_1 = [repeat(a', m, 1).*W0 Wadd_nn], [H0; Hadd_nn]
+    cs = Wcols_modification(X, W0_1, H0_1)
+    W0_2, H0_2 = repeat(cs', m, 1).*W0_1, H0_1
+    return abs.(W0_2), abs.(H0_2)
 end
 
-function gsvdrecover_Wa(X::AbstractArray, W0::AbstractArray, H0::AbstractArray, Hadd::AbstractArray)
+"""
+    joint_nnls(X, W0, H0, Hadd) -> (W_augmented, H_augmented)
+
+Alternative `gsvdrecover` strategy that jointly solves for the new columns of
+`W` and the rescaling `α` of existing columns using nonnegative least-squares
+(NNLS). `Hadd` is first projected onto the non-negative orthant.
+
+Returns non-negative `(W_augmented, H_augmented)`.
+"""
+function joint_nnls(X, W0::AbstractArray, H0::AbstractArray, Hadd::AbstractArray)
     m = size(W0, 1)
     Hadd_nn = truncatepos(Hadd', X, W0, H0)'
-    Wadd, a = init_Wa(X, W0, H0, Hadd_nn)
+    Wadd, a = init_W_joint_nnls(X, W0, H0, Hadd_nn)
     W0_1, H0_1 = [repeat(a', m, 1).*W0 Wadd], [H0; Hadd_nn]
     return abs.(W0_1), abs.(H0_1)
 end
@@ -165,7 +211,7 @@ function init_H(U0::AbstractArray, S0::AbstractArray, V0::AbstractArray, W0::Abs
     return Hadd_1', Λ
 end
 
-function init_Wa(X::AbstractArray{T}, W0::AbstractArray{T}, H0::AbstractArray{T}, Hadd::AbstractArray{T}) where T
+function init_W_joint_nnls(X::AbstractArray{T}, W0::AbstractArray{T}, H0::AbstractArray{T}, Hadd::AbstractArray{T}) where T
     m = size(X, 1)
     kadd = size(Hadd, 1)
     G = gram_sp_C(W0, H0, Hadd)[1]
