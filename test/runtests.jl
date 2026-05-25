@@ -55,6 +55,14 @@ svdX = load_svd_of_gt()
     _, W_gsvd_2, H_gsvd_2 = gsvdnmf(X, 9 => 10; alg=:cd)
     @test sum(abs2, W_gsvd_1-W_gsvd_2) <= 1e-12
     @test sum(abs2, H_gsvd_1-H_gsvd_2) <= 1e-12
+
+    # n2 == size(W, 2) is a caller bug: there is nothing to augment.  Reject it
+    # eagerly rather than silently returning the input factorization.
+    Wfit, Hfit = rand(30, 5), rand(5, 20)
+    f = svd(X)
+    @test_throws ArgumentError gsvdnmf(X, Wfit, Hfit, (f.U, f.S, f.V); n2 = 5)
+    @test_throws "must be positive" gsvdnmf(X, Wfit, Hfit, (f.U, f.S, f.V); n2 = 5)
+    @test_throws "must be positive" gsvdrecover(X, Wfit, Hfit, 0, (f.U, f.S, f.V))
 end
 
 @testset "GsvdInitialization" begin

@@ -43,19 +43,15 @@ function gsvdnmf(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, f;
                  kwargs...)
     n1 = size(W, 2)
     kadd = n2 - n1
-    kadd >= 0 || throw(ArgumentError("The number of components to add must be non-negative"))
+    kadd > 0 || throw(ArgumentError("The number of components to add must be positive; got n2 = $n2, size(W, 2) = $n1"))
     kadd <= n1 || throw(ArgumentError("The number of components to add must be less than initial number of components"))
     size(first(f), 2) >= n1 || throw(ArgumentError("The supplied SVD does not have enough components"))
-    if kadd == 0
-        return W, H
-    else
-        W_recover, H_recover, _ = gsvdrecover(X, copy(W), copy(H), kadd, f; initW=initW)
-        if alg == :multmse
-            W_recover, H_recover = max.(W_recover, truncmult), max.(H_recover, truncmult)
-        end
-        result_recover = nnmf(X, n2; kwargs..., init=:custom, tol=tol_nmf, W0=copy(W_recover), H0=copy(H_recover))
-        return result_recover, result_recover.W, result_recover.H
+    W_recover, H_recover, _ = gsvdrecover(X, copy(W), copy(H), kadd, f; initW=initW)
+    if alg == :multmse
+        W_recover, H_recover = max.(W_recover, truncmult), max.(H_recover, truncmult)
     end
+    result_recover = nnmf(X, n2; kwargs..., init=:custom, tol=tol_nmf, W0=copy(W_recover), H0=copy(H_recover))
+    return result_recover, result_recover.W, result_recover.H
 end
 gsvdnmf(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, n2::Int; kwargs...) = gsvdnmf(X, W, H, tsvd(X, n2); kwargs...)
 
@@ -120,26 +116,23 @@ Arguments:
 """
 function gsvdrecover(X, W0::AbstractArray, H0::AbstractArray, kadd::Int, f::Tuple; initW::Symbol = :standard, kwargs...)
     m, n = size(W0)
+    kadd > 0 || throw(ArgumentError("kadd must be positive; got $kadd"))
     kadd <= n || throw(ArgumentError("# of extra columns must less than 1st NMF components"))
-    if kadd == 0
-        return W0, H0, 0
+    U0, S0, V0 = f
+    U0, S0, V0 = U0[:,1:n], S0[1:n], V0[:,1:n]
+    Hadd, Λ = init_H(U0, S0, V0, W0, H0, kadd)
+    if initW == :standard
+        Wadd, a = init_W(X, W0, H0, Hadd)
+        Wadd_nn, Hadd_nn = nndsvd(X, kadd, initdata = (U = Wadd, S = ones(kadd), V = Hadd'))
+        W0_1, H0_1 = [repeat(a', m, 1).*W0 Wadd_nn], [H0; Hadd_nn]
+        cs = Wcols_modification(X, W0_1, H0_1)
+        W0_2, H0_2 = repeat(cs', m, 1).*W0_1, H0_1
+    elseif initW == :joint
+        W0_2, H0_2 = gsvdrecover_Wa(X, W0, H0, Hadd; kwargs...)
     else
-        U0, S0, V0 = f
-        U0, S0, V0 = U0[:,1:n], S0[1:n], V0[:,1:n]
-        Hadd, Λ = init_H(U0, S0, V0, W0, H0, kadd)
-        if initW == :standard
-            Wadd, a = init_W(X, W0, H0, Hadd)
-            Wadd_nn, Hadd_nn = nndsvd(X, kadd, initdata = (U = Wadd, S = ones(kadd), V = Hadd'))
-            W0_1, H0_1 = [repeat(a', m, 1).*W0 Wadd_nn], [H0; Hadd_nn]
-            cs = Wcols_modification(X, W0_1, H0_1)
-            W0_2, H0_2 = repeat(cs', m, 1).*W0_1, H0_1
-        elseif initW == :joint
-            W0_2, H0_2 = gsvdrecover_Wa(X, W0, H0, Hadd; kwargs...)
-        else
-            throw(ArgumentError("Unknown initW method: $initW"))
-        end
-        return abs.(W0_2), abs.(H0_2), Λ
+        throw(ArgumentError("Unknown initW method: $initW"))
     end
+    return abs.(W0_2), abs.(H0_2), Λ
 end
 
 function gsvdrecover_Wa(X::AbstractArray, W0::AbstractArray, H0::AbstractArray, Hadd::AbstractArray)
