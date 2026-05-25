@@ -174,7 +174,7 @@ end
 
     W0, H0 = copy(W), copy(H)
     Hadd = rand(2, 8)
-    Wadd, a = GsvdInitialization.init_Wa(X, W0, H0, Hadd)
+    Wadd, a = GsvdInitialization.init_W_joint_nnls(X, W0, H0, Hadd)
     @test a ≈ ones(size(W0, 2))
     @test norm(Wadd) <= 1e-8
 

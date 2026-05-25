@@ -78,8 +78,8 @@ Perform "GSVD-NMF" on the data matrix `X`.
 Arguments:
 
 - `strategy`: optional augmentation strategy `(X, W0, H0, Hadd) -> (W_aug, H_aug)`.
-  Defaults to `GsvdInitialization.truncating`; pass `GsvdInitialization.joint` for the
-  alternative (joint-NNLS) bundled strategy, or supply your own.
+  Defaults to `GsvdInitialization.truncating`; pass `GsvdInitialization.joint_nnls`
+  for the alternative bundled strategy, or supply your own.
 
 - `X`: non-negative data matrix
 
@@ -131,7 +131,7 @@ Wadd, Hadd, S = **gsvdrecover**([strategy,] X, W0, H0, kadd, f)
 
 Augment components for `W` and `H` without polishing by NMF.
 `strategy` defaults to `GsvdInitialization.truncating`; pass
-`GsvdInitialization.joint` or a user-defined callable for alternative
+`GsvdInitialization.joint_nnls` or a user-defined callable for alternative
 augmentation paths.
 
 Outputs:

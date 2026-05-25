@@ -191,7 +191,7 @@ Returns non-negative `(W_augmented, H_augmented)`.
 function joint_nnls(X, W0::AbstractArray, H0::AbstractArray, Hadd::AbstractArray)
     m = size(W0, 1)
     Hadd_nn = truncatepos(Hadd', X, W0, H0)'
-    Wadd, a = init_Wa(X, W0, H0, Hadd_nn)
+    Wadd, a = init_W_joint_nnls(X, W0, H0, Hadd_nn)
     W0_1, H0_1 = [repeat(a', m, 1).*W0 Wadd], [H0; Hadd_nn]
     return abs.(W0_1), abs.(H0_1)
 end
@@ -211,7 +211,7 @@ function init_H(U0::AbstractArray, S0::AbstractArray, V0::AbstractArray, W0::Abs
     return Hadd_1', Λ
 end
 
-function init_Wa(X::AbstractArray{T}, W0::AbstractArray{T}, H0::AbstractArray{T}, Hadd::AbstractArray{T}) where T
+function init_W_joint_nnls(X::AbstractArray{T}, W0::AbstractArray{T}, H0::AbstractArray{T}, Hadd::AbstractArray{T}) where T
     m = size(X, 1)
     kadd = size(Hadd, 1)
     G = gram_sp_C(W0, H0, Hadd)[1]
