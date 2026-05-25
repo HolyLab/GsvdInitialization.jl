@@ -13,6 +13,7 @@ TSVD = "9449cd9e-2762-5aa3-a617-5413e99d722e"
 
 [compat]
 Aqua = "0.8"
+ExplicitImports = "1.15"
 FileIO = "1.18"
 JLD2 = "0.6"
 Kronecker = "0.5"
@@ -26,10 +27,11 @@ julia = "1.10"
 
 [extras]
 Aqua = "4c88cf16-eb10-579e-8560-4a9242c79595"
+ExplicitImports = "7d51a73a-1435-4ff3-83d9-f097790105c7"
 FileIO = "5789e2e9-d7fb-5bc7-8068-2c6fae9b9549"
 JLD2 = "033835bb-8acc-5ee8-8aae-3f567f8a3819"
 NMF = "6ef6ca0d-6ad7-5ff6-b225-e928bfa0a386"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [targets]
-test = ["Aqua", "NMF", "Test", "FileIO", "JLD2"]
+test = ["Aqua", "ExplicitImports", "NMF", "Test", "FileIO", "JLD2"]

@@ -1,11 +1,20 @@
 using GsvdInitialization
 using Test
 using Aqua
+using ExplicitImports
 
 using LinearAlgebra, NMF, FileIO
 
 @testset "Aqua" begin
     Aqua.test_all(GsvdInitialization)
+end
+
+@testset "ExplicitImports" begin
+    # `nndsvd` is exported by NMF but not declared `public` in NMF.jl.
+    test_explicit_imports(GsvdInitialization;
+                          ignore = (:nndsvd,),
+                          all_explicit_imports_are_public = VERSION >= v"1.11",
+                          all_qualified_accesses_are_public = VERSION >= v"1.11")
 end
 
 # Minimal `Factorization` subtype that implements just the matrix products and
