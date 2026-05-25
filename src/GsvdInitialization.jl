@@ -1,8 +1,11 @@
 module GsvdInitialization
 
-using LinearAlgebra, NMF, TSVD
-using NonNegLeastSquares
-using Kronecker, SparseArrays 
+using LinearAlgebra: Diagonal, I, Symmetric, diag, isposdef, svd
+using NMF: NMF, nnmf, nndsvd
+using TSVD: tsvd
+using NonNegLeastSquares: nonneg_lsq
+using Kronecker: kronecker
+using SparseArrays: sparse
 
 export gsvdnmf,
        gsvdrecover
@@ -83,7 +86,7 @@ Other keyword arguments are passed to `NMF.nnmf`.
 function gsvdnmf(X::AbstractMatrix, ncomponents::Pair{Int,Int}; tol_final=1e-4, tol_intermediate=tol_final, initW = :standard, kwargs...)
     n1, n2 = ncomponents
     f = tsvd(X, n2)
-    W0, H0 = NMF.nndsvd(X, n1; initdata = (U = f[1], S = f[2], V = f[3]))
+    W0, H0 = nndsvd(X, n1; initdata = (U = f[1], S = f[2], V = f[3]))
     result_initial_nmf = nnmf(X, n1; kwargs..., init=:custom, tol=tol_intermediate, W0=copy(W0), H0=copy(H0))
     W_initial_nmf, H_initial_nmf = result_initial_nmf.W, result_initial_nmf.H
     return gsvdnmf(X, W_initial_nmf, H_initial_nmf, f; kwargs..., n2=n2, tol_nmf=tol_final, initW=initW)
@@ -126,7 +129,7 @@ function gsvdrecover(X, W0::AbstractArray, H0::AbstractArray, kadd::Int, f::Tupl
         Hadd, Λ = init_H(U0, S0, V0, W0, H0, kadd)
         if initW == :standard
             Wadd, a = init_W(X, W0, H0, Hadd)
-            Wadd_nn, Hadd_nn = NMF.nndsvd(X, kadd, initdata = (U = Wadd, S = ones(kadd), V = Hadd'))
+            Wadd_nn, Hadd_nn = nndsvd(X, kadd, initdata = (U = Wadd, S = ones(kadd), V = Hadd'))
             W0_1, H0_1 = [repeat(a', m, 1).*W0 Wadd_nn], [H0; Hadd_nn]
             cs = Wcols_modification(X, W0_1, H0_1)
             W0_2, H0_2 = repeat(cs', m, 1).*W0_1, H0_1
