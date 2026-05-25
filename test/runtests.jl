@@ -143,11 +143,27 @@ end
     @test Hd ≈ Hf
 end
 
+@testset "strategy dispatch" begin
+    X = rand(30, 20)
+    # explicit `truncating` matches the no-strategy default
+    r_default, _ = gsvdnmf(X, 9 => 10; alg = :cd)
+    r_explicit, _ = gsvdnmf(GsvdInitialization.truncating, X, 9 => 10; alg = :cd)
+    @test r_default.W ≈ r_explicit.W
+    @test r_default.H ≈ r_explicit.H
+
+    # do-block form: anonymous strategy that simply forwards to `truncating`
+    r_doblock, _ = gsvdnmf(X, 9 => 10; alg = :cd) do X0, W0, H0, Hadd
+        GsvdInitialization.truncating(X0, W0, H0, Hadd)
+    end
+    @test r_doblock.W ≈ r_default.W
+    @test r_doblock.H ≈ r_default.H
+end
+
 @testset "joint optimize W and alpha" begin
     W = W_GT
     H = H_GT
     X = W*H
-    result_joint, _ = gsvdnmf(X, 9=>10; alg = :cd, maxiter = 10^5, tol_final=1e-4, tol_intermediate = 1e-4, initW=:joint);
+    result_joint, _ = gsvdnmf(GsvdInitialization.joint_nnls, X, 9=>10; alg = :cd, maxiter = 10^5, tol_final=1e-4, tol_intermediate = 1e-4);
     W_gsvd, H_gsvd = result_joint.W, result_joint.H
     @test size(W_gsvd, 2) == 10
     @test sum(abs2, X-W_gsvd*H_gsvd)/sum(abs2, X) < 2e-10

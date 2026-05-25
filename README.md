@@ -68,14 +68,18 @@ Here are the new components:
 
 ## Functions
 
-result, Λ = **gsvdnmf**(X::AbstractMatrix, ncomponents::Pair{Int,Int}; 
-                       tol_final=1e-4, 
-                       tol_intermediate=1e-4, 
+result, Λ = **gsvdnmf**([strategy,] X::AbstractMatrix, ncomponents::Pair{Int,Int};
+                       tol_final=1e-4,
+                       tol_intermediate=1e-4,
                        kwargs...)
 
 Perform "GSVD-NMF" on the data matrix `X`.
 
 Arguments:
+
+- `strategy`: optional augmentation strategy `(X, W0, H0, Hadd) -> (W_aug, H_aug)`.
+  Defaults to `GsvdInitialization.truncating`; pass `GsvdInitialization.joint` for the
+  alternative (joint-NNLS) bundled strategy, or supply your own.
 
 - `X`: non-negative data matrix
 
@@ -96,7 +100,7 @@ Other keyword arguments are passed to `NMF.nnmf`.
 
 -----
 
-result, Λ = **gsvdnmf**(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, f;
+result, Λ = **gsvdnmf**([strategy,] X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, f;
                        n2 = size(first(f), 2),
                        tol_nmf=1e-4,
                        kwargs...)
@@ -104,6 +108,8 @@ result, Λ = **gsvdnmf**(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix
 Augment `W` and `H` to have `n2` components, subsequently polished by NMF.
 
 Arguments:
+
+- `strategy`: see above. Defaults to `GsvdInitialization.truncating`.
 
 - `X`: non-negative data matrix
 
@@ -121,9 +127,12 @@ Other keyword arguments are passed to `NMF.nnmf`.
 
 -----
 
-Wadd, Hadd, S = **gsvdrecover**(X, W0, H0, kadd, f)
+Wadd, Hadd, S = **gsvdrecover**([strategy,] X, W0, H0, kadd, f)
 
 Augment components for `W` and `H` without polishing by NMF.
+`strategy` defaults to `GsvdInitialization.truncating`; pass
+`GsvdInitialization.joint` or a user-defined callable for alternative
+augmentation paths.
 
 Outputs:
 
