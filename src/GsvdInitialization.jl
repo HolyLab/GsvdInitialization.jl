@@ -11,10 +11,10 @@ export gsvdnmf,
        gsvdrecover
 
 """
-    W, H = gsvdnmf(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, f;
-                   n2 = size(first(f), 2),
-                   tol_nmf=1e-4,
-                   kwargs...)
+    result, Λ = gsvdnmf(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, f;
+                       n2 = size(first(f), 2),
+                       tol_nmf=1e-4,
+                       kwargs...)
 
 Augment `W` and `H` to have `n2` components, subsequently polished by NMF.
 
@@ -33,6 +33,10 @@ Keyword arguments:
 - `tol_nmf`: the tolerance of  NMF polishing step, default: 1e-4
 
 Other keyword arguments are passed to `NMF.nnmf`.
+
+Returns the `NMF.NMFResult` from the polishing step (its `W` and `H` fields hold
+the augmented factors) and `Λ`, the generalized singular values that ranked the
+candidate augmentation directions.
 """
 function gsvdnmf(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, f;
                  n2 = size(first(f), 2),
@@ -46,17 +50,17 @@ function gsvdnmf(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, f;
     kadd > 0 || throw(ArgumentError("The number of components to add must be positive; got n2 = $n2, size(W, 2) = $n1"))
     kadd <= n1 || throw(ArgumentError("The number of components to add must be less than initial number of components"))
     size(first(f), 2) >= n1 || throw(ArgumentError("The supplied SVD does not have enough components"))
-    W_recover, H_recover, _ = gsvdrecover(X, copy(W), copy(H), kadd, f; initW=initW)
+    W_recover, H_recover, Λ = gsvdrecover(X, copy(W), copy(H), kadd, f; initW=initW)
     if alg == :multmse
         W_recover, H_recover = max.(W_recover, truncmult), max.(H_recover, truncmult)
     end
     result_recover = nnmf(X, n2; kwargs..., init=:custom, tol=tol_nmf, W0=copy(W_recover), H0=copy(H_recover))
-    return result_recover, result_recover.W, result_recover.H
+    return result_recover, Λ
 end
 gsvdnmf(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, n2::Int; kwargs...) = gsvdnmf(X, W, H, tsvd(X, n2); kwargs...)
 
 """
-    W, H = gsvdnmf(X::AbstractMatrix, ncomponents::Pair{Int,Int}; tol_final=1e-4, tol_intermediate=1e-4, kwargs...)
+    result, Λ = gsvdnmf(X::AbstractMatrix, ncomponents::Pair{Int,Int}; tol_final=1e-4, tol_intermediate=1e-4, kwargs...)
 
 Perform "GSVD-NMF" on the data matrix `X`.
 

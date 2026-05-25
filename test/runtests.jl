@@ -45,14 +45,18 @@ svdX = load_svd_of_gt()
     H = H_GT
     X = W*H
     standard_nmf = nnmf(X, 10; alg = :cd, init=:nndsvd, tol=1e-4, maxiter = 10^5, initdata = svdX)
-    _, W_gsvd, H_gsvd = gsvdnmf(X, 9=>10; alg = :cd, maxiter = 10^5, tol_final=1e-4, tol_intermediate = 1e-4);
+    result_gsvd, Λ_gsvd = gsvdnmf(X, 9=>10; alg = :cd, maxiter = 10^5, tol_final=1e-4, tol_intermediate = 1e-4);
+    W_gsvd, H_gsvd = result_gsvd.W, result_gsvd.H
     @test size(W_gsvd, 2) == 10
     @test sum(abs2, X-W_gsvd*H_gsvd)/sum(abs2, X) < 2e-10
     @test sum(abs2, X-standard_nmf.W*standard_nmf.H)/sum(abs2, X) > sum(abs2, X-W_gsvd*H_gsvd)/sum(abs2, X)
+    @test length(Λ_gsvd) == 9
 
     X = rand(30, 20)
-    _, W_gsvd_1, H_gsvd_1 = gsvdnmf(X, 10; alg=:cd)
-    _, W_gsvd_2, H_gsvd_2 = gsvdnmf(X, 9 => 10; alg=:cd)
+    result_1, _ = gsvdnmf(X, 10; alg=:cd)
+    result_2, _ = gsvdnmf(X, 9 => 10; alg=:cd)
+    W_gsvd_1, H_gsvd_1 = result_1.W, result_1.H
+    W_gsvd_2, H_gsvd_2 = result_2.W, result_2.H
     @test sum(abs2, W_gsvd_1-W_gsvd_2) <= 1e-12
     @test sum(abs2, H_gsvd_1-H_gsvd_2) <= 1e-12
 
@@ -143,7 +147,8 @@ end
     W = W_GT
     H = H_GT
     X = W*H
-    _, W_gsvd, H_gsvd = gsvdnmf(X, 9=>10; alg = :cd, maxiter = 10^5, tol_final=1e-4, tol_intermediate = 1e-4, initW=:joint);
+    result_joint, _ = gsvdnmf(X, 9=>10; alg = :cd, maxiter = 10^5, tol_final=1e-4, tol_intermediate = 1e-4, initW=:joint);
+    W_gsvd, H_gsvd = result_joint.W, result_joint.H
     @test size(W_gsvd, 2) == 10
     @test sum(abs2, X-W_gsvd*H_gsvd)/sum(abs2, X) < 2e-10
 
