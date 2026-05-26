@@ -102,7 +102,7 @@ Other keyword arguments are passed to `NMF.nnmf`.
 
 result, Λ = **gsvdnmf**([strategy,] X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, f;
                        n2 = size(first(f), 2),
-                       tol_nmf=1e-4,
+                       tol_final=1e-4,
                        kwargs...)
 
 Augment `W` and `H` to have `n2` components, subsequently polished by NMF.
@@ -121,7 +121,7 @@ Arguments:
 
 Keyword arguments:
 
-- `tol_nmf`: the tolerance of  NMF polishing step, default: 1e-4
+- `tol_final`: the tolerance of the NMF polishing step, default: 1e-4
 
 Other keyword arguments are passed to `NMF.nnmf`.
 

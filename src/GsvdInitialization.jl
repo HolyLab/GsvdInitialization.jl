@@ -17,7 +17,7 @@ end
 """
     result, Λ = gsvdnmf([strategy,] X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, f;
                        n2 = size(first(f), 2),
-                       tol_nmf=1e-4,
+                       tol_final=1e-4,
                        kwargs...)
 
 Augment `W` and `H` to have `n2` components, subsequently polished by NMF.
@@ -40,7 +40,7 @@ Arguments:
 
 Keyword arguments:
 
-- `tol_nmf`: the tolerance of  NMF polishing step, default: 1e-4
+- `tol_final`: the tolerance of the NMF polishing step, default: 1e-4
 
 Other keyword arguments are passed to `NMF.nnmf`.
 
@@ -50,7 +50,7 @@ candidate augmentation directions.
 """
 function gsvdnmf(strategy, X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, f;
                  n2 = size(first(f), 2),
-                 tol_nmf=1e-4,
+                 tol_final = 1e-4,
                  alg = :cd,
                  truncmult = 1e-5,
                  kwargs...)
@@ -63,7 +63,7 @@ function gsvdnmf(strategy, X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatr
     if alg == :multmse
         W_recover, H_recover = max.(W_recover, truncmult), max.(H_recover, truncmult)
     end
-    result_recover = nnmf(X, n2; kwargs..., init=:custom, tol=tol_nmf, W0=copy(W_recover), H0=copy(H_recover))
+    result_recover = nnmf(X, n2; kwargs..., init=:custom, tol=tol_final, W0=copy(W_recover), H0=copy(H_recover))
     return result_recover, Λ
 end
 gsvdnmf(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, f; kwargs...) =
@@ -106,7 +106,7 @@ function gsvdnmf(strategy, X::AbstractMatrix, ncomponents::Pair{<:Integer,<:Inte
     W0, H0 = nndsvd(X, n1; initdata = (U = f[1], S = f[2], V = f[3]))
     result_initial_nmf = nnmf(X, n1; kwargs..., init=:custom, tol=tol_intermediate, W0=copy(W0), H0=copy(H0))
     W_initial_nmf, H_initial_nmf = result_initial_nmf.W, result_initial_nmf.H
-    return gsvdnmf(strategy, X, W_initial_nmf, H_initial_nmf, f; kwargs..., n2=n2, tol_nmf=tol_final)
+    return gsvdnmf(strategy, X, W_initial_nmf, H_initial_nmf, f; kwargs..., n2=n2, tol_final)
 end
 gsvdnmf(X::AbstractMatrix, ncomponents::Pair{<:Integer,<:Integer}; kwargs...) =
     gsvdnmf(truncating, X, ncomponents; kwargs...)
