@@ -146,7 +146,7 @@ Arguments:
 
 `f`: SVD (or Truncated SVD) of `X`
 """
-function gsvdrecover(strategy, X, W0::AbstractArray, H0::AbstractArray, kadd::Integer, f)
+function gsvdrecover(strategy, X, W0::AbstractMatrix, H0::AbstractMatrix, kadd::Integer, f)
     _, n = size(W0)
     kadd > 0 || throw(ArgumentError("kadd must be positive; got $kadd"))
     kadd <= n || throw(ArgumentError("# of extra columns must less than 1st NMF components"))
@@ -156,7 +156,7 @@ function gsvdrecover(strategy, X, W0::AbstractArray, H0::AbstractArray, kadd::In
     W, H = strategy(X, W0, H0, Hadd)
     return W, H, Λ
 end
-gsvdrecover(X, W0::AbstractArray, H0::AbstractArray, kadd::Integer, f) =
+gsvdrecover(X, W0::AbstractMatrix, H0::AbstractMatrix, kadd::Integer, f) =
     gsvdrecover(truncating, X, W0, H0, kadd, f)
 
 """
@@ -168,7 +168,7 @@ to solve for the new columns of `W` (i.e., `Wadd`).
 
 Returns non-negative `(W_augmented, H_augmented)`.
 """
-function truncating(X, W0::AbstractArray, H0::AbstractArray, Hadd::AbstractArray)
+function truncating(X, W0::AbstractMatrix, H0::AbstractMatrix, Hadd::AbstractMatrix)
     m = size(W0, 1)
     kadd = size(Hadd, 1)
     Wadd, a = init_W(X, W0, H0, Hadd)
@@ -188,7 +188,7 @@ Alternative `gsvdrecover` strategy that jointly solves for the new columns of
 
 Returns non-negative `(W_augmented, H_augmented)`.
 """
-function joint_nnls(X, W0::AbstractArray, H0::AbstractArray, Hadd::AbstractArray)
+function joint_nnls(X, W0::AbstractMatrix, H0::AbstractMatrix, Hadd::AbstractMatrix)
     m = size(W0, 1)
     Hadd_nn = truncatepos(Hadd', X, W0, H0)'
     Wadd, a = init_W_joint_nnls(X, W0, H0, Hadd_nn)
@@ -196,7 +196,7 @@ function joint_nnls(X, W0::AbstractArray, H0::AbstractArray, Hadd::AbstractArray
     return abs.(W0_1), abs.(H0_1)
 end
 
-function init_H(U0::AbstractArray, S0::AbstractArray, V0::AbstractArray, W0::AbstractArray, H0::AbstractArray, kadd::Integer)
+function init_H(U0::AbstractMatrix, S0::AbstractVector, V0::AbstractMatrix, W0::AbstractMatrix, H0::AbstractMatrix, kadd::Integer)
     _, _, Q, D1, D2, R = svd(Matrix(Diagonal(S0)), (U0'*W0)*(H0*V0));
     inv_RQt = inv(R*Q')
     r0 = size(U0, 2)
@@ -211,7 +211,7 @@ function init_H(U0::AbstractArray, S0::AbstractArray, V0::AbstractArray, W0::Abs
     return Hadd_1', Λ
 end
 
-function init_W_joint_nnls(X::AbstractArray{T}, W0::AbstractArray{T}, H0::AbstractArray{T}, Hadd::AbstractArray{T}) where T
+function init_W_joint_nnls(X::AbstractMatrix{T}, W0::AbstractMatrix{T}, H0::AbstractMatrix{T}, Hadd::AbstractMatrix{T}) where T
     m = size(X, 1)
     kadd = size(Hadd, 1)
     G = gram_sp_C(W0, H0, Hadd)[1]
@@ -245,7 +245,7 @@ function gram_b(X, W0, H0, Hadd)
     return b
 end
 
-function init_W(X, W0::AbstractArray{T}, H0::AbstractArray{T}, Hadd::AbstractArray{T}; α = nothing) where T
+function init_W(X, W0::AbstractMatrix{T}, H0::AbstractMatrix{T}, Hadd::AbstractMatrix{T}; α = nothing) where T
     A, b, _, invHH, H0Hadd, XHaddt = obj_para(X, W0, H0, Hadd)
     if α === nothing
         if isposdef(A)
@@ -262,7 +262,7 @@ function init_W(X, W0::AbstractArray{T}, H0::AbstractArray{T}, Hadd::AbstractArr
     return Wadd, abs.(α)
 end
 
-function obj_para(X, W0::AbstractArray{T}, H0::AbstractArray{T}, Hadd::AbstractArray{T}) where T
+function obj_para(X, W0::AbstractMatrix{T}, H0::AbstractMatrix{T}, Hadd::AbstractMatrix{T}) where T
     XHaddt = X*Hadd'
     H0Hadd = H0*Hadd'
     HH = Hadd*Hadd'
@@ -277,7 +277,7 @@ function obj_para(X, W0::AbstractArray{T}, H0::AbstractArray{T}, Hadd::AbstractA
     return Symmetric(A), b, C, invHH, H0Hadd, XHaddt
 end
 
-function Wcols_modification(X, W::AbstractArray{T}, H::AbstractArray{T}) where T
+function Wcols_modification(X, W::AbstractMatrix{T}, H::AbstractMatrix{T}) where T
     n = size(W, 2)
     a = Array{T}(undef, n)
     B = Array{T}(undef, n, n)
