@@ -17,7 +17,7 @@ end
 """
     result, Λ = gsvdnmf([strategy,] X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, f;
                        n2 = size(first(f), 2),
-                       tol_nmf=1e-4,
+                       tol_final=1e-4,
                        kwargs...)
 
 Augment `W` and `H` to have `n2` components, subsequently polished by NMF.
@@ -40,7 +40,7 @@ Arguments:
 
 Keyword arguments:
 
-- `tol_nmf`: the tolerance of  NMF polishing step, default: 1e-4
+- `tol_final`: the tolerance of the NMF polishing step, default: 1e-4
 
 Other keyword arguments are passed to `NMF.nnmf`.
 
@@ -50,7 +50,7 @@ candidate augmentation directions.
 """
 function gsvdnmf(strategy, X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, f;
                  n2 = size(first(f), 2),
-                 tol_nmf=1e-4,
+                 tol_final = 1e-4,
                  alg = :cd,
                  truncmult = 1e-5,
                  kwargs...)
@@ -63,14 +63,14 @@ function gsvdnmf(strategy, X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatr
     if alg == :multmse
         W_recover, H_recover = max.(W_recover, truncmult), max.(H_recover, truncmult)
     end
-    result_recover = nnmf(X, n2; kwargs..., init=:custom, tol=tol_nmf, W0=copy(W_recover), H0=copy(H_recover))
+    result_recover = nnmf(X, n2; kwargs..., init=:custom, tol=tol_final, W0=copy(W_recover), H0=copy(H_recover))
     return result_recover, Λ
 end
 gsvdnmf(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, f; kwargs...) =
     gsvdnmf(truncating, X, W, H, f; kwargs...)
-gsvdnmf(strategy, X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, n2::Int; kwargs...) =
+gsvdnmf(strategy, X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, n2::Integer; kwargs...) =
     gsvdnmf(strategy, X, W, H, tsvd(X, n2); kwargs...)
-gsvdnmf(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, n2::Int; kwargs...) =
+gsvdnmf(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, n2::Integer; kwargs...) =
     gsvdnmf(truncating, X, W, H, n2; kwargs...)
 
 """
@@ -100,15 +100,15 @@ Keyword arguments:
 
 Other keyword arguments are passed to `NMF.nnmf`.
 """
-function gsvdnmf(strategy, X::AbstractMatrix, ncomponents::Pair{Int,Int}; tol_final=1e-4, tol_intermediate=tol_final, kwargs...)
+function gsvdnmf(strategy, X::AbstractMatrix, ncomponents::Pair{<:Integer,<:Integer}; tol_final=1e-4, tol_intermediate=tol_final, kwargs...)
     n1, n2 = ncomponents
     f = tsvd(X, n2)
     W0, H0 = nndsvd(X, n1; initdata = (U = f[1], S = f[2], V = f[3]))
     result_initial_nmf = nnmf(X, n1; kwargs..., init=:custom, tol=tol_intermediate, W0=copy(W0), H0=copy(H0))
     W_initial_nmf, H_initial_nmf = result_initial_nmf.W, result_initial_nmf.H
-    return gsvdnmf(strategy, X, W_initial_nmf, H_initial_nmf, f; kwargs..., n2=n2, tol_nmf=tol_final)
+    return gsvdnmf(strategy, X, W_initial_nmf, H_initial_nmf, f; kwargs..., n2=n2, tol_final)
 end
-gsvdnmf(X::AbstractMatrix, ncomponents::Pair{Int,Int}; kwargs...) =
+gsvdnmf(X::AbstractMatrix, ncomponents::Pair{<:Integer,<:Integer}; kwargs...) =
     gsvdnmf(truncating, X, ncomponents; kwargs...)
 gsvdnmf(strategy, X::AbstractMatrix, ncomponents_final::Integer; kwargs...) =
     gsvdnmf(strategy, X, ncomponents_final-1 => ncomponents_final; kwargs...)
@@ -116,9 +116,9 @@ gsvdnmf(X::AbstractMatrix, ncomponents_final::Integer; kwargs...) =
     gsvdnmf(truncating, X, ncomponents_final; kwargs...)
 
 """
-    Wadd, Hadd, S = gsvdrecover([strategy,] X, W0, H0, kadd, f)
+    W_augmented, H_augmented, Λ = gsvdrecover([strategy,] X, W0, H0, kadd, f)
 
-Augment components for `W` and `H` without polishing by NMF.
+Augment components for `W0` and `H0` without polishing by NMF.
 
 `strategy` is a callable `(X, W0, H0, Hadd) -> (W_augmented, H_augmented)` that
 produces fully-assembled non-negative augmented factors from the candidate
@@ -128,15 +128,14 @@ alternative bundled strategy.
 
 Outputs:
 
-`Wadd`: augmented NMF solution
+`W_augmented`, `H_augmented`: the full augmented NMF factors (with `kadd` extra
+components appended to `W0`/`H0`)
 
-`Hadd`: augmented NMF solution
-
-`S`: generalized singular values for the `kadd` augmented components
+`Λ`: generalized singular values used to rank the candidate augmentation directions
 
 Arguments:
 
-`X`: non-nagetive 2D data matrix
+`X`: non-negative 2D data matrix
 
 `W0`: NMF solution
 
@@ -146,7 +145,7 @@ Arguments:
 
 `f`: SVD (or Truncated SVD) of `X`
 """
-function gsvdrecover(strategy, X, W0::AbstractArray, H0::AbstractArray, kadd::Int, f)
+function gsvdrecover(strategy, X, W0::AbstractMatrix, H0::AbstractMatrix, kadd::Integer, f)
     _, n = size(W0)
     kadd > 0 || throw(ArgumentError("kadd must be positive; got $kadd"))
     kadd <= n || throw(ArgumentError("# of extra columns must less than 1st NMF components"))
@@ -156,7 +155,7 @@ function gsvdrecover(strategy, X, W0::AbstractArray, H0::AbstractArray, kadd::In
     W, H = strategy(X, W0, H0, Hadd)
     return W, H, Λ
 end
-gsvdrecover(X, W0::AbstractArray, H0::AbstractArray, kadd::Int, f) =
+gsvdrecover(X, W0::AbstractMatrix, H0::AbstractMatrix, kadd::Integer, f) =
     gsvdrecover(truncating, X, W0, H0, kadd, f)
 
 """
@@ -168,7 +167,7 @@ to solve for the new columns of `W` (i.e., `Wadd`).
 
 Returns non-negative `(W_augmented, H_augmented)`.
 """
-function truncating(X, W0::AbstractArray, H0::AbstractArray, Hadd::AbstractArray)
+function truncating(X, W0::AbstractMatrix, H0::AbstractMatrix, Hadd::AbstractMatrix)
     m = size(W0, 1)
     kadd = size(Hadd, 1)
     Wadd, a = init_W(X, W0, H0, Hadd)
@@ -188,7 +187,7 @@ Alternative `gsvdrecover` strategy that jointly solves for the new columns of
 
 Returns non-negative `(W_augmented, H_augmented)`.
 """
-function joint_nnls(X, W0::AbstractArray, H0::AbstractArray, Hadd::AbstractArray)
+function joint_nnls(X, W0::AbstractMatrix, H0::AbstractMatrix, Hadd::AbstractMatrix)
     m = size(W0, 1)
     Hadd_nn = truncatepos(Hadd', X, W0, H0)'
     Wadd, a = init_W_joint_nnls(X, W0, H0, Hadd_nn)
@@ -196,7 +195,7 @@ function joint_nnls(X, W0::AbstractArray, H0::AbstractArray, Hadd::AbstractArray
     return abs.(W0_1), abs.(H0_1)
 end
 
-function init_H(U0::AbstractArray, S0::AbstractArray, V0::AbstractArray, W0::AbstractArray, H0::AbstractArray, kadd::Int)
+function init_H(U0::AbstractMatrix, S0::AbstractVector, V0::AbstractMatrix, W0::AbstractMatrix, H0::AbstractMatrix, kadd::Integer)
     _, _, Q, D1, D2, R = svd(Matrix(Diagonal(S0)), (U0'*W0)*(H0*V0));
     inv_RQt = inv(R*Q')
     r0 = size(U0, 2)
@@ -211,7 +210,7 @@ function init_H(U0::AbstractArray, S0::AbstractArray, V0::AbstractArray, W0::Abs
     return Hadd_1', Λ
 end
 
-function init_W_joint_nnls(X::AbstractArray{T}, W0::AbstractArray{T}, H0::AbstractArray{T}, Hadd::AbstractArray{T}) where T
+function init_W_joint_nnls(X::AbstractMatrix{T}, W0::AbstractMatrix{T}, H0::AbstractMatrix{T}, Hadd::AbstractMatrix{T}) where T
     m = size(X, 1)
     kadd = size(Hadd, 1)
     G = gram_sp_C(W0, H0, Hadd)[1]
@@ -245,7 +244,7 @@ function gram_b(X, W0, H0, Hadd)
     return b
 end
 
-function init_W(X, W0::AbstractArray{T}, H0::AbstractArray{T}, Hadd::AbstractArray{T}; α = nothing) where T
+function init_W(X, W0::AbstractMatrix{T}, H0::AbstractMatrix{T}, Hadd::AbstractMatrix{T}; α = nothing) where T
     A, b, _, invHH, H0Hadd, XHaddt = obj_para(X, W0, H0, Hadd)
     if α === nothing
         if isposdef(A)
@@ -262,7 +261,7 @@ function init_W(X, W0::AbstractArray{T}, H0::AbstractArray{T}, Hadd::AbstractArr
     return Wadd, abs.(α)
 end
 
-function obj_para(X, W0::AbstractArray{T}, H0::AbstractArray{T}, Hadd::AbstractArray{T}) where T
+function obj_para(X, W0::AbstractMatrix{T}, H0::AbstractMatrix{T}, Hadd::AbstractMatrix{T}) where T
     XHaddt = X*Hadd'
     H0Hadd = H0*Hadd'
     HH = Hadd*Hadd'
@@ -277,7 +276,7 @@ function obj_para(X, W0::AbstractArray{T}, H0::AbstractArray{T}, Hadd::AbstractA
     return Symmetric(A), b, C, invHH, H0Hadd, XHaddt
 end
 
-function Wcols_modification(X, W::AbstractArray{T}, H::AbstractArray{T}) where T
+function Wcols_modification(X, W::AbstractMatrix{T}, H::AbstractMatrix{T}) where T
     n = size(W, 2)
     a = Array{T}(undef, n)
     B = Array{T}(undef, n, n)

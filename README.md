@@ -102,7 +102,7 @@ Other keyword arguments are passed to `NMF.nnmf`.
 
 result, Λ = **gsvdnmf**([strategy,] X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, f;
                        n2 = size(first(f), 2),
-                       tol_nmf=1e-4,
+                       tol_final=1e-4,
                        kwargs...)
 
 Augment `W` and `H` to have `n2` components, subsequently polished by NMF.
@@ -121,30 +121,29 @@ Arguments:
 
 Keyword arguments:
 
-- `tol_nmf`: the tolerance of  NMF polishing step, default: 1e-4
+- `tol_final`: the tolerance of the NMF polishing step, default: 1e-4
 
 Other keyword arguments are passed to `NMF.nnmf`.
 
 -----
 
-Wadd, Hadd, S = **gsvdrecover**([strategy,] X, W0, H0, kadd, f)
+W_augmented, H_augmented, Λ = **gsvdrecover**([strategy,] X, W0, H0, kadd, f)
 
-Augment components for `W` and `H` without polishing by NMF.
+Augment components for `W0` and `H0` without polishing by NMF.
 `strategy` defaults to `GsvdInitialization.truncating`; pass
 `GsvdInitialization.joint_nnls` or a user-defined callable for alternative
 augmentation paths.
 
 Outputs:
 
-`Wadd`: augmented NMF solution
+`W_augmented`, `H_augmented`: the full augmented NMF factors (with `kadd` extra
+components appended to `W0`/`H0`)
 
-`Hadd`: augmented NMF solution
-
-`S`: generalized singular values for the `kadd` augmented components
+`Λ`: generalized singular values used to rank the candidate augmentation directions
 
 Arguments:
 
-`X`: non-nagetive 2D data matrix
+`X`: non-negative 2D data matrix
 
 `W0`: NMF solution
 
