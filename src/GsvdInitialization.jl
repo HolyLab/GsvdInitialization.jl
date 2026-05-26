@@ -68,9 +68,9 @@ function gsvdnmf(strategy, X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatr
 end
 gsvdnmf(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, f; kwargs...) =
     gsvdnmf(truncating, X, W, H, f; kwargs...)
-gsvdnmf(strategy, X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, n2::Int; kwargs...) =
+gsvdnmf(strategy, X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, n2::Integer; kwargs...) =
     gsvdnmf(strategy, X, W, H, tsvd(X, n2); kwargs...)
-gsvdnmf(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, n2::Int; kwargs...) =
+gsvdnmf(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, n2::Integer; kwargs...) =
     gsvdnmf(truncating, X, W, H, n2; kwargs...)
 
 """
@@ -100,7 +100,7 @@ Keyword arguments:
 
 Other keyword arguments are passed to `NMF.nnmf`.
 """
-function gsvdnmf(strategy, X::AbstractMatrix, ncomponents::Pair{Int,Int}; tol_final=1e-4, tol_intermediate=tol_final, kwargs...)
+function gsvdnmf(strategy, X::AbstractMatrix, ncomponents::Pair{<:Integer,<:Integer}; tol_final=1e-4, tol_intermediate=tol_final, kwargs...)
     n1, n2 = ncomponents
     f = tsvd(X, n2)
     W0, H0 = nndsvd(X, n1; initdata = (U = f[1], S = f[2], V = f[3]))
@@ -108,7 +108,7 @@ function gsvdnmf(strategy, X::AbstractMatrix, ncomponents::Pair{Int,Int}; tol_fi
     W_initial_nmf, H_initial_nmf = result_initial_nmf.W, result_initial_nmf.H
     return gsvdnmf(strategy, X, W_initial_nmf, H_initial_nmf, f; kwargs..., n2=n2, tol_nmf=tol_final)
 end
-gsvdnmf(X::AbstractMatrix, ncomponents::Pair{Int,Int}; kwargs...) =
+gsvdnmf(X::AbstractMatrix, ncomponents::Pair{<:Integer,<:Integer}; kwargs...) =
     gsvdnmf(truncating, X, ncomponents; kwargs...)
 gsvdnmf(strategy, X::AbstractMatrix, ncomponents_final::Integer; kwargs...) =
     gsvdnmf(strategy, X, ncomponents_final-1 => ncomponents_final; kwargs...)
@@ -146,7 +146,7 @@ Arguments:
 
 `f`: SVD (or Truncated SVD) of `X`
 """
-function gsvdrecover(strategy, X, W0::AbstractArray, H0::AbstractArray, kadd::Int, f)
+function gsvdrecover(strategy, X, W0::AbstractArray, H0::AbstractArray, kadd::Integer, f)
     _, n = size(W0)
     kadd > 0 || throw(ArgumentError("kadd must be positive; got $kadd"))
     kadd <= n || throw(ArgumentError("# of extra columns must less than 1st NMF components"))
@@ -156,7 +156,7 @@ function gsvdrecover(strategy, X, W0::AbstractArray, H0::AbstractArray, kadd::In
     W, H = strategy(X, W0, H0, Hadd)
     return W, H, Λ
 end
-gsvdrecover(X, W0::AbstractArray, H0::AbstractArray, kadd::Int, f) =
+gsvdrecover(X, W0::AbstractArray, H0::AbstractArray, kadd::Integer, f) =
     gsvdrecover(truncating, X, W0, H0, kadd, f)
 
 """
@@ -196,7 +196,7 @@ function joint_nnls(X, W0::AbstractArray, H0::AbstractArray, Hadd::AbstractArray
     return abs.(W0_1), abs.(H0_1)
 end
 
-function init_H(U0::AbstractArray, S0::AbstractArray, V0::AbstractArray, W0::AbstractArray, H0::AbstractArray, kadd::Int)
+function init_H(U0::AbstractArray, S0::AbstractArray, V0::AbstractArray, W0::AbstractArray, H0::AbstractArray, kadd::Integer)
     _, _, Q, D1, D2, R = svd(Matrix(Diagonal(S0)), (U0'*W0)*(H0*V0));
     inv_RQt = inv(R*Q')
     r0 = size(U0, 2)

@@ -143,6 +143,26 @@ end
     @test Hd ≈ Hf
 end
 
+@testset "integer-typed component counts" begin
+    X = rand(30, 20)
+    # Non-`Int` integer types (e.g. `Int32`) must dispatch on the same methods
+    # as plain `Int` — no `MethodError` from over-tight signatures.
+    r_int,   _ = gsvdnmf(X, 9 => 10; alg = :cd)
+    r_int32, _ = gsvdnmf(X, Int32(9) => Int32(10); alg = :cd)
+    @test r_int.W ≈ r_int32.W
+    @test r_int.H ≈ r_int32.H
+
+    r_n2_int,   _ = gsvdnmf(X, 10; alg = :cd)
+    r_n2_int32, _ = gsvdnmf(X, Int32(10); alg = :cd)
+    @test r_n2_int.W ≈ r_n2_int32.W
+
+    # `gsvdrecover` likewise accepts a non-`Int` `kadd`.
+    Wfit, Hfit = rand(30, 4), rand(4, 20)
+    f = svd(X)
+    Wa, Ha, _ = gsvdrecover(X, Wfit, Hfit, Int32(1), (f.U, f.S, f.V))
+    @test size(Wa, 2) == 5
+end
+
 @testset "strategy dispatch" begin
     X = rand(30, 20)
     # explicit `truncating` matches the no-strategy default
