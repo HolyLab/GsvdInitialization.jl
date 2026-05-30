@@ -253,7 +253,7 @@ function init_W(X, W0::AbstractMatrix{T}, H0::AbstractMatrix{T}, Hadd::AbstractM
             # A is not positive definite: the QP min_{α≥0} α'Aα + 2b'α has no
             # unique bounded minimum, so fnnls is not meaningful.  Fall back to
             # α = 1 (keep existing components at their current scale).
-            sum(abs2, A) <= 1e-12 || @warn "A is not positive definite."
+            sum(abs2, A) <= 1e-12 || @warn "A is not positive definite." maxlog=1
             α = ones(T, size(A, 1))
         end
     end
