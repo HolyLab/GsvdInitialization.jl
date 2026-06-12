@@ -1,6 +1,6 @@
 module GsvdInitialization
 
-using LinearAlgebra: Diagonal, I, Symmetric, diag, isposdef, svd
+using LinearAlgebra: Diagonal, I, Symmetric, UpperTriangular, cholesky, diag, isposdef, svd, tr
 using NMF: NMF, nnmf, nndsvd
 using TSVD: tsvd
 using NonNegLeastSquares: nonneg_lsq
@@ -42,6 +42,14 @@ Keyword arguments:
 
 - `tol_final`: the tolerance of the NMF polishing step, default: 1e-4
 
+- `alg`: the NMF algorithm for the polishing step, forwarded to `NMF.nnmf`,
+  default: `:cd`. When `alg == :multmse` the augmented factors are floored to
+  `truncmult` first, because multiplicative updates require strictly positive
+  factors.
+
+- `truncmult`: the flooring level applied to the augmented factors when
+  `alg == :multmse`, default: 1e-5
+
 Other keyword arguments are passed to `NMF.nnmf`.
 
 Returns the `NMF.NMFResult` from the polishing step (its `W` and `H` fields hold
@@ -57,13 +65,13 @@ function gsvdnmf(strategy, X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatr
     n1 = size(W, 2)
     kadd = n2 - n1
     kadd > 0 || throw(ArgumentError("The number of components to add must be positive; got n2 = $n2, size(W, 2) = $n1"))
-    kadd <= n1 || throw(ArgumentError("The number of components to add must be less than initial number of components"))
-    size(first(f), 2) >= n1 || throw(ArgumentError("The supplied SVD does not have enough components"))
+    kadd <= n1 || throw(ArgumentError("The number of components to add must be at most the initial number of components; got kadd = $kadd, size(W, 2) = $n1"))
+    size(first(f), 2) >= n1 || throw(ArgumentError("The supplied SVD has $(size(first(f), 2)) components but size(W, 2) = $n1 are required"))
     W_recover, H_recover, Λ = gsvdrecover(strategy, X, copy(W), copy(H), kadd, f)
     if alg == :multmse
         W_recover, H_recover = max.(W_recover, truncmult), max.(H_recover, truncmult)
     end
-    result_recover = nnmf(X, n2; kwargs..., init=:custom, tol=tol_final, W0=copy(W_recover), H0=copy(H_recover))
+    result_recover = nnmf(X, n2; kwargs..., alg, init=:custom, tol=tol_final, W0=copy(W_recover), H0=copy(H_recover))
     return result_recover, Λ
 end
 gsvdnmf(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, f; kwargs...) =
@@ -94,9 +102,9 @@ In this case, `gsvdnmf` defaults to augment components on initial NMF solution b
 
 Keyword arguments:
 
-- `tol_final`: The tolerence of final NMF, default:`10^{-4}`
+- `tol_final`: The tolerance of final NMF, default:`10^{-4}`
 
-- `tol_intermediate`: The tolerence of initial NMF (under-complete NMF), default: tol_final
+- `tol_intermediate`: The tolerance of initial NMF (under-complete NMF), default: tol_final
 
 Other keyword arguments are passed to `NMF.nnmf`.
 """
@@ -106,7 +114,7 @@ function gsvdnmf(strategy, X::AbstractMatrix, ncomponents::Pair{<:Integer,<:Inte
     W0, H0 = nndsvd(X, n1; initdata = (U = f[1], S = f[2], V = f[3]))
     result_initial_nmf = nnmf(X, n1; kwargs..., init=:custom, tol=tol_intermediate, W0=copy(W0), H0=copy(H0))
     W_initial_nmf, H_initial_nmf = result_initial_nmf.W, result_initial_nmf.H
-    return gsvdnmf(strategy, X, W_initial_nmf, H_initial_nmf, f; kwargs..., n2=n2, tol_final)
+    return gsvdnmf(strategy, X, W_initial_nmf, H_initial_nmf, f; kwargs..., n2, tol_final)
 end
 gsvdnmf(X::AbstractMatrix, ncomponents::Pair{<:Integer,<:Integer}; kwargs...) =
     gsvdnmf(truncating, X, ncomponents; kwargs...)
@@ -148,7 +156,8 @@ Arguments:
 function gsvdrecover(strategy, X, W0::AbstractMatrix, H0::AbstractMatrix, kadd::Integer, f)
     _, n = size(W0)
     kadd > 0 || throw(ArgumentError("kadd must be positive; got $kadd"))
-    kadd <= n || throw(ArgumentError("# of extra columns must less than 1st NMF components"))
+    kadd <= n || throw(ArgumentError("the number of extra columns must be at most size(W0, 2); got kadd = $kadd, size(W0, 2) = $n"))
+    size(first(f), 2) >= n || throw(ArgumentError("the supplied SVD has $(size(first(f), 2)) components but size(W0, 2) = $n are required"))
     U0, S0, V0 = f
     U0, S0, V0 = U0[:,1:n], S0[1:n], V0[:,1:n]
     Hadd, Λ = init_H(U0, S0, V0, W0, H0, kadd)
@@ -168,13 +177,12 @@ to solve for the new columns of `W` (i.e., `Wadd`).
 Returns non-negative `(W_augmented, H_augmented)`.
 """
 function truncating(X, W0::AbstractMatrix, H0::AbstractMatrix, Hadd::AbstractMatrix)
-    m = size(W0, 1)
     kadd = size(Hadd, 1)
     Wadd, a = init_W(X, W0, H0, Hadd)
-    Wadd_nn, Hadd_nn = nndsvd(X, kadd, initdata = (U = Wadd, S = ones(kadd), V = Hadd'))
-    W0_1, H0_1 = [repeat(a', m, 1).*W0 Wadd_nn], [H0; Hadd_nn]
+    Wadd_nn, Hadd_nn = nndsvd(X, kadd, initdata = (U = Wadd, S = ones(eltype(Wadd), kadd), V = Hadd'))
+    W0_1, H0_1 = [a' .* W0 Wadd_nn], [H0; Hadd_nn]
     cs = Wcols_modification(X, W0_1, H0_1)
-    W0_2, H0_2 = repeat(cs', m, 1).*W0_1, H0_1
+    W0_2, H0_2 = cs' .* W0_1, H0_1
     return abs.(W0_2), abs.(H0_2)
 end
 
@@ -185,32 +193,41 @@ Alternative `gsvdrecover` strategy that jointly solves for the new columns of
 `W` and the rescaling `α` of existing columns using nonnegative least-squares
 (NNLS). `Hadd` is first projected onto the non-negative orthant.
 
+Beyond the `*` and `sum(abs2, ·)` that the default [`truncating`](@ref) strategy
+needs from `X`, this path also requires `X - W*H` and `eltype(X)` (used while
+projecting `Hadd`).
+
 Returns non-negative `(W_augmented, H_augmented)`.
 """
 function joint_nnls(X, W0::AbstractMatrix, H0::AbstractMatrix, Hadd::AbstractMatrix)
-    m = size(W0, 1)
     Hadd_nn = truncatepos(Hadd', X, W0, H0)'
     Wadd, a = init_W_joint_nnls(X, W0, H0, Hadd_nn)
-    W0_1, H0_1 = [repeat(a', m, 1).*W0 Wadd], [H0; Hadd_nn]
+    W0_1, H0_1 = [a' .* W0 Wadd], [H0; Hadd_nn]
     return abs.(W0_1), abs.(H0_1)
 end
 
 function init_H(U0::AbstractMatrix, S0::AbstractVector, V0::AbstractMatrix, W0::AbstractMatrix, H0::AbstractMatrix, kadd::Integer)
     _, _, Q, D1, D2, R = svd(Matrix(Diagonal(S0)), (U0'*W0)*(H0*V0));
-    inv_RQt = inv(R*Q')
     r0 = size(U0, 2)
     k = findfirst(x->x!=0, D2[1,:])
     k = (k === nothing) ? r0 : k-1
-    kadd >= k || @warn "kadd is less than rank deficiency of W0*H0."
+    kadd >= k || @warn "kadd ($kadd) is less than the rank deficiency of W0*H0 ($k)."
     F = (diag(D1[k+1:r0, k+1:r0])./diag(D2[1:r0-k,k+1:r0])).^2
     Λ = vcat(fill(Inf, k), F)
     H_index = sortperm(Λ, rev = true)[1:kadd]
-    Hadd = inv_RQt[:, H_index]
+    # Columns of inv(R*Q') = Q*inv(R) selected by H_index, via a triangular
+    # backsolve on just those right-hand sides: the GSVD's Q is orthogonal and
+    # R is square upper triangular (Diagonal(S0) is nonsingular, so k+l = r0).
+    E = zeros(eltype(R), size(R, 1), length(H_index))
+    for (j, idx) in enumerate(H_index)
+        E[idx, j] = 1
+    end
+    Hadd = Q * (UpperTriangular(R) \ E)
     Hadd_1 = V0*Hadd
     return Hadd_1', Λ
 end
 
-function init_W_joint_nnls(X::AbstractMatrix{T}, W0::AbstractMatrix{T}, H0::AbstractMatrix{T}, Hadd::AbstractMatrix{T}) where T
+function init_W_joint_nnls(X, W0::AbstractMatrix{T}, H0::AbstractMatrix{T}, Hadd::AbstractMatrix{T}) where T
     m = size(X, 1)
     kadd = size(Hadd, 1)
     G = gram_sp_C(W0, H0, Hadd)[1]
@@ -229,7 +246,7 @@ function gram_sp_C(W0, H0, Hadd)
     P = Hadd*H0'
     HH = Hadd*Hadd'
     G22 = sparse(W0W0.*H0H0)
-    G12 = zeros(Float64, mk, r0)
+    G12 = zeros(eltype(W0W0), mk, r0)
     for j in 1:r0
         G12[:,j] .= vec(W0[:,j] * P[:,j]')
     end
@@ -245,7 +262,7 @@ function gram_b(X, W0, H0, Hadd)
 end
 
 function init_W(X, W0::AbstractMatrix{T}, H0::AbstractMatrix{T}, Hadd::AbstractMatrix{T}; α = nothing) where T
-    A, b, _, invHH, H0Hadd, XHaddt = obj_para(X, W0, H0, Hadd)
+    A, b, _, cholHH, H0Hadd, XHaddt = obj_para(X, W0, H0, Hadd)
     if α === nothing
         if isposdef(A)
             α = nonneg_lsq(A, -b; alg=:fnnls, gram=true)
@@ -257,7 +274,7 @@ function init_W(X, W0::AbstractMatrix{T}, H0::AbstractMatrix{T}, Hadd::AbstractM
             α = ones(T, size(A, 1))
         end
     end
-    Wadd = XHaddt*invHH-W0*Diagonal(α[:])*H0Hadd*invHH
+    Wadd = (XHaddt - W0*Diagonal(α[:])*H0Hadd) / cholHH
     return Wadd, abs.(α)
 end
 
@@ -267,19 +284,16 @@ function obj_para(X, W0::AbstractMatrix{T}, H0::AbstractMatrix{T}, Hadd::Abstrac
     HH = Hadd*Hadd'
     W0W0 = W0'*W0
     H0H0 = H0*H0'
-    invHH = inv(HH)
-    A = W0W0.*(H0H0-H0Hadd*invHH*H0Hadd')
+    cholHH = cholesky(Symmetric(HH))
+    A = W0W0.*(H0H0-H0Hadd*(cholHH \ H0Hadd'))
     W0tXH0t = W0'*X*H0'
     W0XHaddt = W0'*XHaddt
-    b = diag(H0Hadd*invHH*W0XHaddt'-W0tXH0t)
-    C = sum(abs2, X)-sum(invHH.*(XHaddt'*XHaddt))
-    return Symmetric(A), b, C, invHH, H0Hadd, XHaddt
+    b = diag(H0Hadd*(cholHH \ W0XHaddt')-W0tXH0t)
+    C = sum(abs2, X)-tr(cholHH \ (XHaddt'*XHaddt))
+    return Symmetric(A), b, C, cholHH, H0Hadd, XHaddt
 end
 
 function Wcols_modification(X, W::AbstractMatrix{T}, H::AbstractMatrix{T}) where T
-    n = size(W, 2)
-    a = Array{T}(undef, n)
-    B = Array{T}(undef, n, n)
     WW, HH = W'*W, H*H'
     WtXHt = W'*X*H'
     a = diag(WtXHt)

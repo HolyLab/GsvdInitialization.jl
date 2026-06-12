@@ -4,6 +4,7 @@ using Aqua
 using ExplicitImports
 
 using LinearAlgebra, NMF, FileIO
+using StableRNGs
 
 @testset "Aqua" begin
     Aqua.test_all(GsvdInitialization)
@@ -34,6 +35,9 @@ Base.size(F::MockFactored, d) = d == 1 ? size(F.U, 1) : (d == 2 ? size(F.V, 2) :
 Base.:*(F::MockFactored, A::AbstractMatrix) = F.U * (F.V * A)
 Base.:*(A::AbstractMatrix, F::MockFactored) = (A * F.U) * F.V
 Base.sum(::typeof(abs2), F::MockFactored) = sum((F.U' * F.U) .* (F.V * F.V'))
+# `joint_nnls`'s `truncatepos` step needs `X - W*H`; materializing densely here
+# is fine — the point is that no `AbstractArray` constraint rejects `X`.
+Base.:-(F::MockFactored, A::AbstractMatrix) = F.U * F.V - A
 
 include(joinpath(dirname(@__DIR__), "demo/generate_ground_truth.jl"))
 
@@ -41,6 +45,7 @@ W_GT, H_GT = generate_ground_truth()
 svdX = load_svd_of_gt()
 
 @testset "test top wrapper" begin
+    rng = StableRNG(1)
     W = W_GT
     H = H_GT
     X = W*H
@@ -52,56 +57,76 @@ svdX = load_svd_of_gt()
     @test sum(abs2, X-standard_nmf.W*standard_nmf.H)/sum(abs2, X) > sum(abs2, X-W_gsvd*H_gsvd)/sum(abs2, X)
     @test length(Λ_gsvd) == 9
 
-    X = rand(30, 20)
+    # `gsvdnmf(X, n2)` is sugar for `gsvdnmf(X, n2-1 => n2)`.  The two calls run
+    # the same pipeline, so they agree only up to the ~1e-9 nondeterminism of
+    # multithreaded BLAS in `nnmf`; `rtol = 1e-6` stays far tighter than the
+    # `1e-4` NMF tol.
+    X = rand(rng, 30, 20)
     result_1, _ = gsvdnmf(X, 10; alg=:cd)
     result_2, _ = gsvdnmf(X, 9 => 10; alg=:cd)
     W_gsvd_1, H_gsvd_1 = result_1.W, result_1.H
     W_gsvd_2, H_gsvd_2 = result_2.W, result_2.H
-    @test sum(abs2, W_gsvd_1-W_gsvd_2) <= 1e-12
-    @test sum(abs2, H_gsvd_1-H_gsvd_2) <= 1e-12
+    @test isapprox(W_gsvd_1, W_gsvd_2; rtol = 1e-6)
+    @test isapprox(H_gsvd_1, H_gsvd_2; rtol = 1e-6)
 
     # n2 == size(W, 2) is a caller bug: there is nothing to augment.  Reject it
     # eagerly rather than silently returning the input factorization.
-    Wfit, Hfit = rand(30, 5), rand(5, 20)
+    Wfit, Hfit = rand(rng, 30, 5), rand(rng, 5, 20)
     f = svd(X)
     @test_throws ArgumentError gsvdnmf(X, Wfit, Hfit, (f.U, f.S, f.V); n2 = 5)
     @test_throws "must be positive" gsvdnmf(X, Wfit, Hfit, (f.U, f.S, f.V); n2 = 5)
     @test_throws "must be positive" gsvdrecover(X, Wfit, Hfit, 0, (f.U, f.S, f.V))
+
+    # An SVD with fewer components than `size(W0, 2)` cannot seed the
+    # generalized SVD; reject it with a clear message rather than a BoundsError.
+    fsmall = (f.U[:, 1:3], f.S[1:3], f.V[:, 1:3])
+    @test_throws "has 3 components but size(W0, 2) = 5" gsvdrecover(X, Wfit, Hfit, 1, fsmall)
+
+    # A single call augments by at most the current number of components.
+    @test_throws "must be at most the initial number of components" gsvdnmf(X, Wfit, Hfit, (f.U, f.S, f.V); n2 = 11)
+    @test_throws "must be at most size(W0, 2)" gsvdrecover(X, Wfit, Hfit, 6, (f.U, f.S, f.V))
+
+    # `alg` must reach the polishing `nnmf`.  An unknown algorithm name is
+    # rejected by `nnmf` only if `alg` is forwarded; the polishing call is the
+    # sole `nnmf` invocation in this four-argument path.
+    Waug, Haug = rand(rng, 30, 9), rand(rng, 9, 20)
+    @test_throws "Invalid algorithm" gsvdnmf(X, Waug, Haug, (f.U, f.S, f.V); n2 = 10, alg = :__nonexistent__)
 end
 
 @testset "GsvdInitialization" begin
-    W, H = rand(10, 3), rand(3, 8)
+    rng = StableRNG(2)
+    W, H = rand(rng, 10, 3), rand(rng, 3, 8)
     X = W*H
     U, S, V = svd(X)
 
     W0, H0 = copy(W), copy(H)
-    Hadd = rand(2, 8)
+    Hadd = rand(rng, 2, 8)
     Wadd, a = GsvdInitialization.init_W(X, W0, H0, Hadd)
     @test a ≈ ones(size(W0, 2))
     @test norm(Wadd) <= 1e-8
-    
+
     W0, H0 = zero(W), zero(H)
     Hadd = V[:,1:3]'
     Wadd, a = GsvdInitialization.init_W(X, W0, H0, Hadd)
     @test sum(abs2, Wadd-(U*Diagonal(S))[:,1:3]) <= 1e-12
 
-    W0, H0 = rand(10, 4), rand(4, 8)
-    Hadd = rand(2, 8)
+    W0, H0 = rand(rng, 10, 4), rand(rng, 4, 8)
+    Hadd = rand(rng, 2, 8)
     A, b, C, HH, γ = GsvdInitialization.obj_para(X, W0, H0, Hadd)
-    a = rand(4)
+    a = rand(rng, 4)
     Wadd, a = GsvdInitialization.init_W(X, W0, H0, Hadd, α = a)
     E = a'*A*a+2*b'*a+C
     @test abs(E-sum(abs2, X-[repeat(a', size(W0, 1)).*W0 Wadd]*[H0;Hadd])) <= 1e-12
 
-    β0 = rand(3)
+    β0 = rand(rng, 3)
     β = GsvdInitialization.Wcols_modification(X, repeat(β0', size(W, 1)).*W, H)
     @test β.*β0 ≈ ones(3)
 
     # When H0 is parallel to Hadd the Schur complement vanishes and A = 0, making
     # the QP degenerate.  init_W must return finite results rather than throwing
     # SingularException (which fnnls raises on Julia ≥ 1.12 for a zero pivot).
-    W0_deg = rand(Float64, 5, 1)
-    H0_deg = rand(Float64, 1, 8)
+    W0_deg = rand(rng, Float64, 5, 1)
+    H0_deg = rand(rng, Float64, 1, 8)
     X_deg  = W0_deg * H0_deg
     Hadd_deg = H0_deg   # parallel to H0 → Schur complement = 0 → A = 0
     Wadd_deg, a_deg = GsvdInitialization.init_W(X_deg, W0_deg, H0_deg, Hadd_deg)
@@ -115,12 +140,13 @@ end
 # dense product never be materialized, which matters when `X` would otherwise
 # be the largest array per call.
 @testset "non-AbstractArray X" begin
-    U = rand(10, 3)
-    V = rand(3, 8)
+    rng = StableRNG(3)
+    U = rand(rng, 10, 3)
+    V = rand(rng, 3, 8)
     Xdense = U * V
     Xfact  = MockFactored(U, V)
-    W0, H0 = rand(10, 4), rand(4, 8)
-    Hadd   = rand(2, 8)
+    W0, H0 = rand(rng, 10, 4), rand(rng, 4, 8)
+    Hadd   = rand(rng, 2, 8)
     fs     = svd(Xdense)
     f      = (fs.U, fs.S, fs.V)
 
@@ -131,7 +157,7 @@ end
     @test a_d    ≈ a_f
 
     # `Wcols_modification` likewise.
-    β0 = rand(4)
+    β0 = rand(rng, 4)
     W_scaled = repeat(β0', size(W0, 1)) .* W0
     @test GsvdInitialization.Wcols_modification(Xdense, W_scaled, H0) ≈
           GsvdInitialization.Wcols_modification(Xfact,  W_scaled, H0)
@@ -141,45 +167,77 @@ end
     Wf, Hf, _ = GsvdInitialization.gsvdrecover(Xfact,  copy(W0), copy(H0), 2, f)
     @test Wd ≈ Wf
     @test Hd ≈ Hf
+
+    # The `joint_nnls` strategy also accepts a factored `X` (it needs `X - W*H`
+    # and `eltype(X)` on top of `*`/`sum(abs2, ·)`).
+    Wjd, ajd = GsvdInitialization.init_W_joint_nnls(Xdense, W0, H0, Hadd)
+    Wjf, ajf = GsvdInitialization.init_W_joint_nnls(Xfact,  W0, H0, Hadd)
+    @test Wjd ≈ Wjf
+    @test ajd ≈ ajf
+
+    Wd_j, Hd_j, _ = GsvdInitialization.gsvdrecover(GsvdInitialization.joint_nnls, Xdense, copy(W0), copy(H0), 2, f)
+    Wf_j, Hf_j, _ = GsvdInitialization.gsvdrecover(GsvdInitialization.joint_nnls, Xfact,  copy(W0), copy(H0), 2, f)
+    @test Wd_j ≈ Wf_j
+    @test Hd_j ≈ Hf_j
+end
+
+@testset "eltype genericity" begin
+    # The default (`truncating`) path must preserve the input eltype rather than
+    # silently promoting to `Float64`.
+    rng = StableRNG(4)
+    W = rand(rng, Float32, 12, 4)
+    H = rand(rng, Float32, 4, 9)
+    X = W * H
+    fs = svd(X)
+    Wa, Ha, _ = gsvdrecover(X, copy(W), copy(H), 2, (fs.U, fs.S, fs.V))
+    @test eltype(Wa) === Float32
+    @test eltype(Ha) === Float32
 end
 
 @testset "integer-typed component counts" begin
-    X = rand(30, 20)
+    rng = StableRNG(5)
+    X = rand(rng, 30, 20)
     # Non-`Int` integer types (e.g. `Int32`) must dispatch on the same methods
-    # as plain `Int` — no `MethodError` from over-tight signatures.
+    # as plain `Int` — no `MethodError` from over-tight signatures.  Each pair
+    # runs the same pipeline twice, so `rtol = 1e-6` for the same reason as the
+    # cross-call checks in "test top wrapper".
     r_int,   _ = gsvdnmf(X, 9 => 10; alg = :cd)
     r_int32, _ = gsvdnmf(X, Int32(9) => Int32(10); alg = :cd)
-    @test r_int.W ≈ r_int32.W
-    @test r_int.H ≈ r_int32.H
+    @test isapprox(r_int.W, r_int32.W; rtol = 1e-6)
+    @test isapprox(r_int.H, r_int32.H; rtol = 1e-6)
 
     r_n2_int,   _ = gsvdnmf(X, 10; alg = :cd)
     r_n2_int32, _ = gsvdnmf(X, Int32(10); alg = :cd)
-    @test r_n2_int.W ≈ r_n2_int32.W
+    @test isapprox(r_n2_int.W, r_n2_int32.W; rtol = 1e-6)
 
     # `gsvdrecover` likewise accepts a non-`Int` `kadd`.
-    Wfit, Hfit = rand(30, 4), rand(4, 20)
+    Wfit, Hfit = rand(rng, 30, 4), rand(rng, 4, 20)
     f = svd(X)
     Wa, Ha, _ = gsvdrecover(X, Wfit, Hfit, Int32(1), (f.U, f.S, f.V))
     @test size(Wa, 2) == 5
 end
 
 @testset "strategy dispatch" begin
-    X = rand(30, 20)
-    # explicit `truncating` matches the no-strategy default
+    rng = StableRNG(6)
+    X = rand(rng, 30, 20)
+    # explicit `truncating` matches the no-strategy default.  These run the same
+    # strategy, so they agree up to the ~1e-9 nondeterminism of multithreaded
+    # BLAS in `nnmf`; `rtol = 1e-6` stays far tighter than the `1e-4` NMF tol.
     r_default, _ = gsvdnmf(X, 9 => 10; alg = :cd)
     r_explicit, _ = gsvdnmf(GsvdInitialization.truncating, X, 9 => 10; alg = :cd)
-    @test r_default.W ≈ r_explicit.W
-    @test r_default.H ≈ r_explicit.H
+    @test isapprox(r_default.W, r_explicit.W; rtol = 1e-6)
+    @test isapprox(r_default.H, r_explicit.H; rtol = 1e-6)
 
     # do-block form: anonymous strategy that simply forwards to `truncating`
     r_doblock, _ = gsvdnmf(X, 9 => 10; alg = :cd) do X0, W0, H0, Hadd
         GsvdInitialization.truncating(X0, W0, H0, Hadd)
     end
-    @test r_doblock.W ≈ r_default.W
-    @test r_doblock.H ≈ r_default.H
+    @test isapprox(r_doblock.W, r_default.W; rtol = 1e-6)
+    @test isapprox(r_doblock.H, r_default.H; rtol = 1e-6)
 end
 
 @testset "joint optimize W and alpha" begin
+    rng = StableRNG(7)
     W = W_GT
     H = H_GT
     X = W*H
@@ -188,20 +246,20 @@ end
     @test size(W_gsvd, 2) == 10
     @test sum(abs2, X-W_gsvd*H_gsvd)/sum(abs2, X) < 2e-10
 
-    W, H = rand(10, 3), rand(3, 8)
+    W, H = rand(rng, 10, 3), rand(rng, 3, 8)
     X = W*H
     U, S, V = svd(X)
 
     W0, H0 = copy(W), copy(H)
-    Hadd = rand(2, 8)
+    Hadd = rand(rng, 2, 8)
     Wadd, a = GsvdInitialization.init_W_joint_nnls(X, W0, H0, Hadd)
     @test a ≈ ones(size(W0, 2))
     @test norm(Wadd) <= 1e-8
 
     G = GsvdInitialization.gram_sp_C(W0, H0, Hadd)[1]
     b = GsvdInitialization.gram_b(X, W0, H0, Hadd)
-    Wadd = rand(10, 2)
-    α = rand(3)
+    Wadd = rand(rng, 10, 2)
+    α = rand(rng, 3)
     θ = vcat(vec(Wadd), α)
     E = θ'*G*θ-2*b'*θ+sum(abs2, X)
     @test abs(E-sum(abs2, X-[repeat(α', size(W0, 1)).*W0 Wadd]*[H0;Hadd])) <= 1e-12
