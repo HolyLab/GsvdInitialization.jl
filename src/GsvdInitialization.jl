@@ -1,3 +1,14 @@
+"""
+`GsvdInitialization` augments an existing low-rank non-negative matrix
+factorization (NMF) `X ≈ W*H` with additional components, using the
+generalized singular value decomposition (GSVD) between the current
+factorization and an SVD of `X` to discover what the factorization is missing
+(the GSVD-NMF method, [doi:10.1016/j.isci.2026.114708](https://doi.org/10.1016/j.isci.2026.114708)).
+
+The main entry points are [`gsvdnmf`](@ref), which augments a factorization
+and polishes the result with NMF, and [`gsvdrecover`](@ref), which performs
+the augmentation step alone.
+"""
 module GsvdInitialization
 
 using LinearAlgebra: Diagonal, I, Symmetric, UpperTriangular, cholesky, diag, isposdef, svd, tr
@@ -16,45 +27,61 @@ end
 
 """
     result, Λ = gsvdnmf([strategy,] X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, f;
-                       n2 = size(first(f), 2),
-                       tol_final=1e-4,
-                       kwargs...)
+                        n2 = size(first(f), 2), tol_final = 1e-4,
+                        alg = :cd, truncmult = 1e-5, kwargs...)
 
-Augment `W` and `H` to have `n2` components, subsequently polished by NMF.
+Augment the existing factorization `X ≈ W*H` to `n2` components, then polish
+the result with NMF. An integer `n2` may be passed in place of `f`, in which
+case a truncated SVD with `n2` components is computed internally.
 
-Arguments:
-
-- `strategy`: a callable `(X, W0, H0, Hadd) -> (W_augmented, H_augmented)` that
-  produces fully-assembled non-negative augmented factors from the candidate
-  directions `Hadd` ranked by [`init_H`](@ref). Defaults to
-  [`GsvdInitialization.truncating`](@ref); [`GsvdInitialization.joint_nnls`](@ref) is
-  the alternative (joint-NNLS) strategy.
-
-- `X`: non-negative data matrix
-
-- `W` and `H`: initial NMF factorization
-
-- `n2`: the number of components in augmented factorization
-
-- `f`: SVD (or Truncated SVD) of `X`
-
-Keyword arguments:
-
-- `tol_final`: the tolerance of the NMF polishing step, default: 1e-4
-
-- `alg`: the NMF algorithm for the polishing step, forwarded to `NMF.nnmf`,
-  default: `:cd`. When `alg == :multmse` the augmented factors are floored to
-  `truncmult` first, because multiplicative updates require strictly positive
-  factors.
-
-- `truncmult`: the flooring level applied to the augmented factors when
-  `alg == :multmse`, default: 1e-5
-
-Other keyword arguments are passed to `NMF.nnmf`.
-
-Returns the `NMF.NMFResult` from the polishing step (its `W` and `H` fields hold
-the augmented factors) and `Λ`, the generalized singular values that ranked the
+Return the `NMF.Result` of the polishing run (its `W` and `H` fields hold the
+augmented factors) and `Λ`, the generalized singular values that ranked the
 candidate augmentation directions.
+
+See [`gsvdrecover`](@ref) for the augmentation step alone, without polishing.
+
+# Arguments
+
+- `strategy`: a callable `(X, W0, H0, Hadd) -> (W_augmented, H_augmented)`
+  that assembles fully non-negative augmented factors from the ranked candidate
+  directions `Hadd`. Defaults to [`GsvdInitialization.truncating`](@ref);
+  [`GsvdInitialization.joint_nnls`](@ref) is the alternative bundled strategy.
+- `X`: non-negative data matrix.
+- `W`: left factor of the existing factorization, of size `(m, n1)`.
+- `H`: right factor of the existing factorization, of size `(n1, p)`.
+- `f`: a singular value decomposition of `X` with at least `n1` components,
+  e.g. from `LinearAlgebra.svd` or `TSVD.tsvd`. Any object whose factors `U`,
+  `S`, `V` are indexable as `f[1]`, `f[2]`, `f[3]` works.
+
+All array arguments, including the factors of `f`, must use 1-based indexing.
+
+# Keyword arguments
+
+- `n2`: the number of components after augmentation; `n2 - n1` must satisfy
+  `1 ≤ n2 - n1 ≤ n1` (at most a doubling per call).
+- `tol_final`: convergence tolerance of the NMF polishing run (default: `1e-4`).
+- `alg`: NMF algorithm for the polishing run, forwarded to `NMF.nnmf`
+  (default: `:cd`). With `alg == :multmse`, the augmented factors are first
+  floored at `truncmult`, because multiplicative updates require strictly
+  positive factors.
+- `truncmult`: flooring level applied when `alg == :multmse` (default: `1e-5`).
+
+Remaining keyword arguments are forwarded to `NMF.nnmf`.
+
+# Examples
+
+```jldoctest
+julia> using LinearAlgebra: svd
+
+julia> X = Float64[1 0 0 1 0; 0 1 0 1 1; 0 0 1 0 1; 1 1 1 2 2];  # rank 3
+
+julia> W0 = Float64[1 0; 0 1; 0 0; 1 1]; H0 = Float64[1 0 0 1 0; 0 1 0 1 1];  # rank-2 factorization of X
+
+julia> result, Λ = gsvdnmf(X, W0, H0, svd(X); n2 = 3);
+
+julia> size(result.W), size(result.H)
+((4, 3), (3, 5))
+```
 """
 function gsvdnmf(strategy, X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, f;
                  n2 = size(first(f), 2),
@@ -62,6 +89,7 @@ function gsvdnmf(strategy, X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatr
                  alg = :cd,
                  truncmult = 1e-5,
                  kwargs...)
+    Base.require_one_based_indexing(X, W, H)
     n1 = size(W, 2)
     kadd = n2 - n1
     kadd > 0 || throw(ArgumentError("The number of components to add must be positive; got n2 = $n2, size(W, 2) = $n1"))
@@ -82,33 +110,54 @@ gsvdnmf(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, n2::Integer; kw
     gsvdnmf(truncating, X, W, H, n2; kwargs...)
 
 """
-    result, Λ = gsvdnmf([strategy,] X::AbstractMatrix, ncomponents::Pair{Int,Int}; tol_final=1e-4, tol_intermediate=1e-4, kwargs...)
+    result, Λ = gsvdnmf([strategy,] X::AbstractMatrix, ncomponents;
+                        tol_final = 1e-4, tol_intermediate = tol_final, kwargs...)
 
-Perform "GSVD-NMF" on the data matrix `X`.
+Perform GSVD-NMF on the non-negative data matrix `X`: compute an NMF with `n1`
+components, augment it to `n2` components, and polish with a final NMF run.
 
-Arguments:
+The initial factorization is computed by `NMF.nnmf` with NNDSVD initialization
+seeded from a truncated SVD of `X`; the same SVD supplies the augmentation
+directions. To augment an existing factorization instead, use the four-argument
+[`gsvdnmf`](@ref) method.
+
+Return the `NMF.Result` of the final NMF run (its `W` and `H` fields hold the
+factors) and `Λ`, the generalized singular values that ranked the candidate
+augmentation directions.
+
+# Arguments
 
 - `strategy`: see the four-argument [`gsvdnmf`](@ref) method. Defaults to
   [`GsvdInitialization.truncating`](@ref).
+- `X`: non-negative data matrix; must use 1-based indexing.
+- `ncomponents`: a pair `n1 => n2` of integers requesting augmentation from
+  `n1` to `n2` components, where `n1 < n2 ≤ 2n1`. An integer `n` is shorthand
+  for `n-1 => n` (add a single component).
 
-- `X`: non-negative data matrix
+# Keyword arguments
 
-- `ncomponents`: in the form of `n1 => n2`, augments from `n1` components to `n2`components,
-  where `n1` is the number of components for initial NMF (under-complete NMF), and `n2` is the number of
-  components for final NMF.
+- `tol_final`: convergence tolerance of the final NMF run (default: `1e-4`).
+- `tol_intermediate`: convergence tolerance of the initial rank-`n1` NMF run
+  (default: same as `tol_final`).
 
-Alternatively, `ncomponents` can be an integer denoting the number of components for final NMF.
-In this case, `gsvdnmf` defaults to augment components on initial NMF solution by 1.
+Remaining keyword arguments are forwarded to `NMF.nnmf`.
 
-Keyword arguments:
+# Examples
 
-- `tol_final`: The tolerance of final NMF, default:`10^{-4}`
+```jldoctest
+julia> X = Float64[1 0 0 1 0; 0 1 0 1 1; 0 0 1 0 1; 1 1 1 2 2];  # rank 3
 
-- `tol_intermediate`: The tolerance of initial NMF (under-complete NMF), default: tol_final
+julia> result, Λ = gsvdnmf(X, 2 => 3);
 
-Other keyword arguments are passed to `NMF.nnmf`.
+julia> size(result.W), size(result.H)
+((4, 3), (3, 5))
+
+julia> sum(abs2, X - result.W*result.H) < 1e-6 * sum(abs2, X)  # near-exact rank-3 fit
+true
+```
 """
 function gsvdnmf(strategy, X::AbstractMatrix, ncomponents::Pair{<:Integer,<:Integer}; tol_final=1e-4, tol_intermediate=tol_final, kwargs...)
+    Base.require_one_based_indexing(X)
     n1, n2 = ncomponents
     f = tsvd(X, n2)
     W0, H0 = nndsvd(X, n1; initdata = (U = f[1], S = f[2], V = f[3]))
@@ -126,39 +175,69 @@ gsvdnmf(X::AbstractMatrix, ncomponents_final::Integer; kwargs...) =
 """
     W_augmented, H_augmented, Λ = gsvdrecover([strategy,] X, W0, H0, kadd, f)
 
-Augment components for `W0` and `H0` without polishing by NMF.
+Augment the factorization `X ≈ W0*H0` with `kadd` additional components. This
+is the augmentation step of [`gsvdnmf`](@ref), without the final NMF polish.
 
-`strategy` is a callable `(X, W0, H0, Hadd) -> (W_augmented, H_augmented)` that
-produces fully-assembled non-negative augmented factors from the candidate
-directions `Hadd` ranked by [`init_H`](@ref). Defaults to
-[`GsvdInitialization.truncating`](@ref); [`GsvdInitialization.joint_nnls`](@ref) is the
-alternative bundled strategy.
+Candidate directions for the new rows of `H` are extracted from the
+generalized SVD between `f` and the current factorization and ranked by
+generalized singular value; `strategy` then assembles the non-negative
+augmented factors.
 
-Outputs:
+Return `W_augmented` (`W0` with `kadd` extra columns), `H_augmented` (`H0`
+with `kadd` extra rows), and `Λ`, the generalized singular values that ranked
+the candidate directions.
 
-`W_augmented`, `H_augmented`: the full augmented NMF factors (with `kadd` extra
-components appended to `W0`/`H0`)
+# Arguments
 
-`Λ`: generalized singular values used to rank the candidate augmentation directions
+- `strategy`: a callable `(X, W0, H0, Hadd) -> (W_augmented, H_augmented)`
+  that assembles fully non-negative augmented factors from the ranked candidate
+  directions `Hadd` (a matrix of `kadd` rows). Defaults to
+  [`GsvdInitialization.truncating`](@ref);
+  [`GsvdInitialization.joint_nnls`](@ref) is the alternative bundled strategy.
+- `X`: non-negative data matrix. `X` need not be an `AbstractMatrix`: any
+  object supporting the operations required by the chosen strategy (see
+  [`truncating`](@ref) and [`joint_nnls`](@ref)) can be used, e.g. a lazy
+  low-rank representation.
+- `W0`: left factor of the existing factorization, of size `(m, n1)`.
+- `H0`: right factor of the existing factorization, of size `(n1, p)`.
+- `kadd`: the number of components to add; must satisfy `1 ≤ kadd ≤ n1`.
+- `f`: a singular value decomposition of `X` with at least `n1` components,
+  e.g. from `LinearAlgebra.svd` or `TSVD.tsvd`. Any object whose factors `U`,
+  `S`, `V` are indexable as `f[1]`, `f[2]`, `f[3]` works.
 
-Arguments:
+All array arguments, including the factors of `f`, must use 1-based indexing.
 
-`X`: non-negative 2D data matrix
+# Examples
 
-`W0`: NMF solution
+```jldoctest
+julia> using LinearAlgebra: svd
 
-`H0`: NMF solution
+julia> X = Float64[1 0 0 1 0; 0 1 0 1 1; 0 0 1 0 1; 1 1 1 2 2];  # rank 3
 
-`kadd`: number of new components
+julia> W0 = Float64[1 0; 0 1; 0 0; 1 1]; H0 = Float64[1 0 0 1 0; 0 1 0 1 1];  # rank-2 factorization of X
 
-`f`: SVD (or Truncated SVD) of `X`
+julia> W, H, Λ = gsvdrecover(X, W0, H0, 1, svd(X));
+
+julia> size(W), size(H)
+((4, 3), (3, 5))
+
+julia> sum(abs2, X - W*H) < sum(abs2, X - W0*H0)  # the new component improves the fit
+true
+```
 """
 function gsvdrecover(strategy, X, W0::AbstractMatrix, H0::AbstractMatrix, kadd::Integer, f)
+    # `X` may be a non-array factored representation (see the docstring); only
+    # arrays carry axes to validate.
+    X isa AbstractArray && Base.require_one_based_indexing(X)
+    Base.require_one_based_indexing(W0, H0)
     _, n = size(W0)
     kadd > 0 || throw(ArgumentError("kadd must be positive; got $kadd"))
     kadd <= n || throw(ArgumentError("the number of extra columns must be at most size(W0, 2); got kadd = $kadd, size(W0, 2) = $n"))
     size(first(f), 2) >= n || throw(ArgumentError("the supplied SVD has $(size(first(f), 2)) components but size(W0, 2) = $n are required"))
     U0, S0, V0 = f
+    # An offset-axes SVD wider than `n` would make the `1:n` slices below
+    # succeed on the wrong columns; reject it before slicing.
+    Base.require_one_based_indexing(U0, S0, V0)
     U0, S0, V0 = U0[:,1:n], S0[1:n], V0[:,1:n]
     Hadd, Λ = init_H(U0, S0, V0, W0, H0, kadd)
     W, H = strategy(X, W0, H0, Hadd)
@@ -170,13 +249,21 @@ gsvdrecover(X, W0::AbstractMatrix, H0::AbstractMatrix, kadd::Integer, f) =
 """
     truncating(X, W0, H0, Hadd) -> (W_augmented, H_augmented)
 
-Default `gsvdrecover` strategy. Restricts the use of nonnegative least-squares (NNLS)
-to the component weights `α`, and uses least-squares followed by an NNDSVD step
-to solve for the new columns of `W` (i.e., `Wadd`).
+Default [`gsvdrecover`](@ref) strategy. Nonnegative least-squares (NNLS) is
+used only for the rescaling weights `α` of the existing columns; the new
+columns of `W` are computed by ordinary least squares and made non-negative by
+an NNDSVD step, after which all columns are rebalanced.
 
-Returns non-negative `(W_augmented, H_augmented)`.
+This strategy requires only `*` and `sum(abs2, ·)` from `X`, so `X` may be a
+lazy or factored low-rank representation rather than a materialized matrix.
+See [`joint_nnls`](@ref) for an alternative that solves for the new columns
+and the rescaling jointly, at greater cost.
+
+Return non-negative `(W_augmented, H_augmented)`.
 """
 function truncating(X, W0::AbstractMatrix, H0::AbstractMatrix, Hadd::AbstractMatrix)
+    X isa AbstractArray && Base.require_one_based_indexing(X)
+    Base.require_one_based_indexing(W0, H0, Hadd)
     kadd = size(Hadd, 1)
     Wadd, a = init_W(X, W0, H0, Hadd)
     Wadd_nn, Hadd_nn = nndsvd(X, kadd, initdata = (U = Wadd, S = ones(eltype(Wadd), kadd), V = Hadd'))
@@ -189,17 +276,23 @@ end
 """
     joint_nnls(X, W0, H0, Hadd) -> (W_augmented, H_augmented)
 
-Alternative `gsvdrecover` strategy that jointly solves for the new columns of
-`W` and the rescaling `α` of existing columns using nonnegative least-squares
-(NNLS). `Hadd` is first projected onto the non-negative orthant.
+Alternative [`gsvdrecover`](@ref) strategy that solves for the new columns of
+`W` and the rescaling `α` of the existing columns jointly, as a single
+nonnegative least-squares (NNLS) problem. `Hadd` is first projected onto the
+non-negative orthant, keeping whichever sign of each candidate direction
+better matches the non-negative part of the residual `X - W0*H0`.
 
-Beyond the `*` and `sum(abs2, ·)` that the default [`truncating`](@ref) strategy
-needs from `X`, this path also requires `X - W*H` and `eltype(X)` (used while
-projecting `Hadd`).
+The joint NNLS problem has one unknown for every entry of the new columns of
+`W` plus one rescaling weight per existing column, so this strategy is more
+expensive than the default [`truncating`](@ref), especially when `X` has many
+rows. Beyond the `*` and `sum(abs2, ·)` that `truncating` needs from `X`, it
+also requires `X - W0*H0` and `eltype(X)`.
 
-Returns non-negative `(W_augmented, H_augmented)`.
+Return non-negative `(W_augmented, H_augmented)`.
 """
 function joint_nnls(X, W0::AbstractMatrix, H0::AbstractMatrix, Hadd::AbstractMatrix)
+    X isa AbstractArray && Base.require_one_based_indexing(X)
+    Base.require_one_based_indexing(W0, H0, Hadd)
     Hadd_nn = truncatepos(Hadd', X, W0, H0)'
     Wadd, a = init_W_joint_nnls(X, W0, H0, Hadd_nn)
     W0_1, H0_1 = [a' .* W0 Wadd], [H0; Hadd_nn]

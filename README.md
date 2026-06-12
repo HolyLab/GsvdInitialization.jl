@@ -3,158 +3,93 @@
 [![CI](https://github.com/HolyLab/GsvdInitialization.jl/actions/workflows/CI.yml/badge.svg)](https://github.com/HolyLab/GsvdInitialization.jl/actions/workflows/CI.yml)
 [![codecov](https://codecov.io/gh/HolyLab/GsvdInitialization.jl/graph/badge.svg?token=LxqRCsZIvn)](https://codecov.io/gh/HolyLab/GsvdInitialization.jl)
 [![Aqua QA](https://juliatesting.github.io/Aqua.jl/dev/assets/badge.svg)](https://github.com/JuliaTesting/Aqua.jl)
+[![version](https://juliahub.com/docs/General/GsvdInitialization/stable/version.svg)](https://juliahub.com/ui/Packages/General/GsvdInitialization)
 
-This package implements the technique in the paper [GSVD-NMF: Recovering Missing Features in
-Non-negative Matrix Factorization](https://arxiv.org/abs/2408.08260).
-It is used to recover Non-negative matrix factorization (NMF) components from an initial lower-rank factorization by exploiting the generalized singular value decomposition (GSVD) between existing NMF results and the SVD of X.
-This method allows the incremental expansion of the number of components, which can be convenient and effective for interactive analysis of large-scale data.
+This package implements GSVD-NMF ([Guo & Holy, *iScience* 2026](https://doi.org/10.1016/j.isci.2026.114708)), a method for recovering missing components in non-negative matrix factorization (NMF).
+Starting from a lower-rank factorization `X ≈ W*H`, it proposes new components from the generalized singular value decomposition (GSVD) between the existing factorization and the SVD of `X`, then polishes the augmented factorization with further NMF iterations.
+Because components can be added incrementally, GSVD-NMF is convenient and effective for interactive analysis of large-scale data.
 
-See also [NMFMerge](https://github.com/HolyLab/NMFMerge.jl) for the converse operation. Together, the two result in a substantial improvement in the quality and consistency of NMF factorization.
+See also [NMFMerge](https://github.com/HolyLab/NMFMerge.jl) for the converse operation (merging redundant components). Together, the two substantially improve the quality and consistency of NMF factorizations.
 
----------------------------
+## Installation
 
-Demo:
+GsvdInitialization is a registered package; type `]` at the `julia>` prompt to enter `pkg>` mode and install it with
 
-To run this demo, NMF.jl and LinearAlgebra.jl are also required.
-
-Install and load packages (type `]` at the `julia>` prompt to enter `pkg>` mode):
-```julia
-pkg> add GsvdInitialization;
-julia> using GsvdInitialization, NMF, LinearAlgebra;
+```
+pkg> add GsvdInitialization
 ```
 
-Generating ground truth with 10 features.
+## Demo
+
+The demo below also uses [NMF.jl](https://github.com/JuliaStats/NMF.jl) and the LinearAlgebra standard library:
 
 ```julia
-julia> include("demo/generate_ground_truth.jl")
+julia> using GsvdInitialization, NMF, LinearAlgebra
+```
+
+Generate a ground truth with 10 features (the script ships with the package):
+
+```julia
+julia> include(joinpath(pkgdir(GsvdInitialization), "demo", "generate_ground_truth.jl"));
+
 julia> W_GT, H_GT = generate_ground_truth();
-julia> X = W_GT*H_GT;
+
+julia> X = W_GT * H_GT;
 ```
 
-<img src="demo/GroundTruth.png" alt="Sample Figure" width="400"/>
+<img src="demo/GroundTruth.png" alt="the 10 ground-truth components" width="400"/>
 
-Running standard NMF(HALS) using NNDSVD as initialization on X. Here, we're taking a couple of precautions to try to ensure the best possible result from NMF:
-- we disable premature convergence by setting `maxiter` to something that is practically infinite
-- we use the full `svd`, rather than `rsvd`, for initializing NNDSVD, as `svd` gives higher-quality results than `rsvd`
-Despite these precautions, we'll see that the NMF result leaves much to be desired:
+First, run standard NMF on `X`, initialized with NNDSVD. Two precautions aim for the best possible result from NMF alone:
+
+- `maxiter` is set generously (and we verify convergence below), so the run stops at the convergence tolerance, not at the iteration limit;
+- NNDSVD is seeded with the full `svd`, which gives higher-quality results than a randomized SVD.
+
+Despite these precautions, the result leaves much to be desired:
 
 ```julia
-julia> result_hals = nnmf(X, 10; init=:nndsvd, alg = :cd, tol = 1e-4, maxiter=10^12, initdata = svd(X));
-julia> sum(abs2, X-result_hals.W*result_hals.H)/sum(abs2, X)
-0.0999994991270576
+julia> result_nmf = nnmf(X, 10; init=:nndsvd, alg=:cd, tol=1e-4, maxiter=10^4, initdata=svd(X));
+
+julia> result_nmf.converged   # stopped at the tolerance, not the iteration cap
+true
+
+julia> sum(abs2, X - result_nmf.W*result_nmf.H) / sum(abs2, X)
+0.09999800028665384
 ```
-The result is given by
 
-<img src="demo/ResultHals.png" alt="Sample Figure" width="400"/>
+<img src="demo/ResultHals.png" alt="components found by standard NMF" width="400"/>
 
-This factorization is not perfect as two components are the same and two features share one component.
-Then, running GSVD-NMF on X (also using NNSVD as initialization) and computing the new reconstruction error:
+The factorization is imperfect: two components are identical, and two features share a single component.
+Now run GSVD-NMF on `X` (also initialized with NNDSVD) and compute the new reconstruction error:
 
 ```julia
-julia> result_gsvd, Λ = gsvdnmf(X, 9=>10; alg = :cd, tol_final = 1e-4, tol_intermediate = 1e-2, maxiter = 10^12);
-julia> Wgsvd, Hgsvd = result_gsvd.W, result_gsvd.H;
-julia> sum(abs2, X-Wgsvd*Hgsvd)/sum(abs2, X)
-1.2322603074132593e-10
+julia> result_gsvd, Λ = gsvdnmf(X, 9 => 10; alg=:cd, tol_final=1e-4, tol_intermediate=1e-2, maxiter=10^4);
+
+julia> W_gsvd, H_gsvd = result_gsvd.W, result_gsvd.H;
+
+julia> sum(abs2, X - W_gsvd*H_gsvd) / sum(abs2, X)
+1.2302340443302435e-10
 ```
 
-`Λ` is the vector of generalized singular values that ranked the candidate augmentation directions, useful as a diagnostic for understanding which directions the algorithm chose.
-An imperfect factorization from `nnmf` alone was augmented by `gsvdnmf` to a perfect factorization.
+An imperfect 9-component factorization was augmented by `gsvdnmf` to an essentially perfect 10-component one.
+`Λ` holds the generalized singular values that ranked the candidate augmentation directions, a useful diagnostic of which directions the algorithm chose.
 Here are the new components:
 
-<img src="demo/ResultGsvdNMF.png" alt="Sample Figure" width="400"/>
+<img src="demo/ResultGsvdNMF.png" alt="components found by GSVD-NMF" width="400"/>
 
+## API overview
 
----------------------------
+Complete signatures and doctested examples are in the REPL help (e.g., type `?gsvdnmf`).
 
-## Functions
+- `gsvdnmf(X, n1 => n2; ...)` runs the full pipeline: an initial NMF with `n1` components, augmentation to `n2` components (`n1 < n2 ≤ 2n1`), and a final NMF polish. `gsvdnmf(X, n)` is shorthand for `gsvdnmf(X, n-1 => n)`.
+- `gsvdnmf(X, W, H, f; n2, ...)` augments an existing factorization `X ≈ W*H` to `n2` components, using a precomputed SVD `f` of `X`, then polishes with NMF.
+- `gsvdrecover(X, W0, H0, kadd, f)` performs the augmentation step alone, adding `kadd` components without the NMF polish.
 
-result, Λ = **gsvdnmf**([strategy,] X::AbstractMatrix, ncomponents::Pair{Int,Int};
-                       tol_final=1e-4,
-                       tol_intermediate=1e-4,
-                       kwargs...)
-
-Perform "GSVD-NMF" on the data matrix `X`.
-
-Arguments:
-
-- `strategy`: optional augmentation strategy `(X, W0, H0, Hadd) -> (W_aug, H_aug)`.
-  Defaults to `GsvdInitialization.truncating`; pass `GsvdInitialization.joint_nnls`
-  for the alternative bundled strategy, or supply your own.
-
-- `X`: non-negative data matrix
-
-- `ncomponents`: in the form of `n1 => n2`, augments from `n1` components to `n2`components,
-  where `n1` is the number of components for initial NMF (under-complete NMF), and `n2` is the number of
-  components for final NMF.
-
-Alternatively, `ncomponents` can be an integer denoting the number of components for final NMF.
-In this case, `gsvdnmf` defaults to augment components on initial NMF solution by 1.
-
-Keyword arguments:
-
-- `tol_final`: The tolerance of final NMF, default:`10^{-4}`
-
-- `tol_intermediate`: The tolerance of initial NMF (under-complete NMF), default: tol_final
-
-Other keyword arguments are passed to `NMF.nnmf`.
-
------
-
-result, Λ = **gsvdnmf**([strategy,] X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, f;
-                       n2 = size(first(f), 2),
-                       tol_final=1e-4,
-                       kwargs...)
-
-Augment `W` and `H` to have `n2` components, subsequently polished by NMF.
-
-Arguments:
-
-- `strategy`: see above. Defaults to `GsvdInitialization.truncating`.
-
-- `X`: non-negative data matrix
-
-- `W` and `H`: initial NMF factorization
-
-- `n2`: the number of components in augmented factorization
-
-- `f`: SVD (or Truncated SVD) of `X`
-
-Keyword arguments:
-
-- `tol_final`: the tolerance of the NMF polishing step, default: 1e-4
-
-Other keyword arguments are passed to `NMF.nnmf`.
-
------
-
-W_augmented, H_augmented, Λ = **gsvdrecover**([strategy,] X, W0, H0, kadd, f)
-
-Augment components for `W0` and `H0` without polishing by NMF.
-`strategy` defaults to `GsvdInitialization.truncating`; pass
-`GsvdInitialization.joint_nnls` or a user-defined callable for alternative
-augmentation paths.
-
-Outputs:
-
-`W_augmented`, `H_augmented`: the full augmented NMF factors (with `kadd` extra
-components appended to `W0`/`H0`)
-
-`Λ`: generalized singular values used to rank the candidate augmentation directions
-
-Arguments:
-
-`X`: non-negative 2D data matrix
-
-`W0`: NMF solution
-
-`H0`: NMF solution
-
-`kadd`: number of new components
-
-`f`: SVD (or Truncated SVD) of `X`
-
------
+Each function optionally takes a leading `strategy` argument controlling how the augmented factors are assembled: `GsvdInitialization.truncating` (the default), `GsvdInitialization.joint_nnls`, or a user-supplied callable `(X, W0, H0, Hadd) -> (W_augmented, H_augmented)`.
 
 ## Citation
 
-Thanks for citing this work! See the "Cite this repository" link in the "About" bar for format options.
+If you use this package, please cite the paper:
+
+> Youdong Guo and Timothy E. Holy, "Recovering missing features in nonnegative matrix factorization via generalized singular value decomposition," *iScience* 29(3):114708 (2026). https://doi.org/10.1016/j.isci.2026.114708
+
+GitHub's "Cite this repository" link (in the About sidebar) provides this in BibTeX and APA formats.

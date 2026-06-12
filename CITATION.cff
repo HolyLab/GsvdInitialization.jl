@@ -1,11 +1,8 @@
-# This CITATION.cff file was generated with cffinit.
-# Visit https://bit.ly/cffinit to generate yours today!
-
 cff-version: 1.2.0
-title: 'GSVD-NMF: Recovering Missing Features in Non-negative Matrix Factorization'
+title: GsvdInitialization.jl
 message: >-
-  If you use this software, please cite it using the
-  metadata from this file.
+  If you use this software, please cite the article listed under
+  preferred-citation.
 type: software
 authors:
   - given-names: Youdong
@@ -15,10 +12,12 @@ authors:
     family-names: Holy
     orcid: 'https://orcid.org/0000-0002-2429-1071'
 identifiers:
+  - type: doi
+    value: 10.1016/j.isci.2026.114708
+    description: The journal article describing the method.
   - type: url
     value: 'https://arxiv.org/abs/2408.08260'
-    description: The ArXiv deposit of the encompassing paper.
-doi: 'https://doi.org/10.48550/arXiv.2408.08260'
+    description: The arXiv preprint of the article.
 repository-code: 'https://github.com/HolyLab/GsvdInitialization.jl'
 abstract: >-
   Non-negative matrix factorization (NMF) is an important
@@ -35,3 +34,22 @@ abstract: >-
   experimental results demonstrate that GSVD-NMF often
   recovers missing features from under-complete NMF and
   helps NMF achieve better local optima.
+preferred-citation:
+  type: article
+  title: >-
+    Recovering missing features in nonnegative matrix factorization via
+    generalized singular value decomposition
+  authors:
+    - given-names: Youdong
+      family-names: Guo
+      orcid: 'https://orcid.org/0009-0007-7787-3722'
+    - given-names: Timothy E.
+      family-names: Holy
+      orcid: 'https://orcid.org/0000-0002-2429-1071'
+  journal: iScience
+  volume: 29
+  issue: 3
+  start: 114708
+  year: 2026
+  month: 3
+  doi: 10.1016/j.isci.2026.114708
