@@ -65,8 +65,8 @@ function gsvdnmf(strategy, X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatr
     n1 = size(W, 2)
     kadd = n2 - n1
     kadd > 0 || throw(ArgumentError("The number of components to add must be positive; got n2 = $n2, size(W, 2) = $n1"))
-    kadd <= n1 || throw(ArgumentError("The number of components to add must be less than initial number of components"))
-    size(first(f), 2) >= n1 || throw(ArgumentError("The supplied SVD does not have enough components"))
+    kadd <= n1 || throw(ArgumentError("The number of components to add must be at most the initial number of components; got kadd = $kadd, size(W, 2) = $n1"))
+    size(first(f), 2) >= n1 || throw(ArgumentError("The supplied SVD has $(size(first(f), 2)) components but size(W, 2) = $n1 are required"))
     W_recover, H_recover, Λ = gsvdrecover(strategy, X, copy(W), copy(H), kadd, f)
     if alg == :multmse
         W_recover, H_recover = max.(W_recover, truncmult), max.(H_recover, truncmult)
@@ -102,9 +102,9 @@ In this case, `gsvdnmf` defaults to augment components on initial NMF solution b
 
 Keyword arguments:
 
-- `tol_final`: The tolerence of final NMF, default:`10^{-4}`
+- `tol_final`: The tolerance of final NMF, default:`10^{-4}`
 
-- `tol_intermediate`: The tolerence of initial NMF (under-complete NMF), default: tol_final
+- `tol_intermediate`: The tolerance of initial NMF (under-complete NMF), default: tol_final
 
 Other keyword arguments are passed to `NMF.nnmf`.
 """
@@ -156,7 +156,7 @@ Arguments:
 function gsvdrecover(strategy, X, W0::AbstractMatrix, H0::AbstractMatrix, kadd::Integer, f)
     _, n = size(W0)
     kadd > 0 || throw(ArgumentError("kadd must be positive; got $kadd"))
-    kadd <= n || throw(ArgumentError("# of extra columns must less than 1st NMF components"))
+    kadd <= n || throw(ArgumentError("the number of extra columns must be at most size(W0, 2); got kadd = $kadd, size(W0, 2) = $n"))
     size(first(f), 2) >= n || throw(ArgumentError("the supplied SVD has $(size(first(f), 2)) components but size(W0, 2) = $n are required"))
     U0, S0, V0 = f
     U0, S0, V0 = U0[:,1:n], S0[1:n], V0[:,1:n]
@@ -211,7 +211,7 @@ function init_H(U0::AbstractMatrix, S0::AbstractVector, V0::AbstractMatrix, W0::
     r0 = size(U0, 2)
     k = findfirst(x->x!=0, D2[1,:])
     k = (k === nothing) ? r0 : k-1
-    kadd >= k || @warn "kadd is less than rank deficiency of W0*H0."
+    kadd >= k || @warn "kadd ($kadd) is less than the rank deficiency of W0*H0 ($k)."
     F = (diag(D1[k+1:r0, k+1:r0])./diag(D2[1:r0-k,k+1:r0])).^2
     Λ = vcat(fill(Inf, k), F)
     H_index = sortperm(Λ, rev = true)[1:kadd]

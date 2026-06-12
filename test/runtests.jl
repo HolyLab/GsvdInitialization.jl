@@ -76,6 +76,10 @@ svdX = load_svd_of_gt()
     fsmall = (f.U[:, 1:3], f.S[1:3], f.V[:, 1:3])
     @test_throws "has 3 components but size(W0, 2) = 5" gsvdrecover(X, Wfit, Hfit, 1, fsmall)
 
+    # A single call augments by at most the current number of components.
+    @test_throws "must be at most the initial number of components" gsvdnmf(X, Wfit, Hfit, (f.U, f.S, f.V); n2 = 11)
+    @test_throws "must be at most size(W0, 2)" gsvdrecover(X, Wfit, Hfit, 6, (f.U, f.S, f.V))
+
     # `alg` must reach the polishing `nnmf`.  An unknown algorithm name is
     # rejected by `nnmf` only if `alg` is forwarded; the polishing call is the
     # sole `nnmf` invocation in this four-argument path.

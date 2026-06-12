@@ -6,7 +6,7 @@
 
 This package implements the technique in the paper [GSVD-NMF: Recovering Missing Features in
 Non-negative Matrix Factorization](https://arxiv.org/abs/2408.08260).
-It is used to recover Non-negative matrix factorization(NMF) components from an initial lower-rank factorization by exploiting the generalized singular value decomposition (GSVD) between existing NMF results and the SVD of X.
+It is used to recover Non-negative matrix factorization (NMF) components from an initial lower-rank factorization by exploiting the generalized singular value decomposition (GSVD) between existing NMF results and the SVD of X.
 This method allows the incremental expansion of the number of components, which can be convenient and effective for interactive analysis of large-scale data.
 
 See also [NMFMerge](https://github.com/HolyLab/NMFMerge.jl) for the converse operation. Together, the two result in a substantial improvement in the quality and consistency of NMF factorization.
@@ -23,7 +23,7 @@ pkg> add GsvdInitialization;
 julia> using GsvdInitialization, NMF, LinearAlgebra;
 ```
 
-Generating grouth truth with 10 features.
+Generating ground truth with 10 features.
 
 ```julia
 julia> include("demo/generate_ground_truth.jl")
@@ -92,9 +92,9 @@ In this case, `gsvdnmf` defaults to augment components on initial NMF solution b
 
 Keyword arguments:
 
-- `tol_final`: The tolerence of final NMF, default:`10^{-4}`
+- `tol_final`: The tolerance of final NMF, default:`10^{-4}`
 
-- `tol_intermediate`: The tolerence of initial NMF (under-complete NMF), default: tol_final
+- `tol_intermediate`: The tolerance of initial NMF (under-complete NMF), default: tol_final
 
 Other keyword arguments are passed to `NMF.nnmf`.
 
