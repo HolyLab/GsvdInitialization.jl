@@ -14,13 +14,15 @@ end
 
 @testset "ExplicitImports" begin
     # `nndsvd` is exported by NMF but not declared `public` in NMF.jl.
-    test_explicit_imports(GsvdInitialization;
-                          ignore = (:nndsvd,),
-                          all_explicit_imports_are_public = VERSION >= v"1.11",
-                          all_qualified_accesses_are_public = VERSION >= v"1.11")
+    test_explicit_imports(
+        GsvdInitialization;
+        ignore = (:nndsvd,),
+        all_explicit_imports_are_public = VERSION >= v"1.11",
+        all_qualified_accesses_are_public = VERSION >= v"1.11"
+    )
 end
 
-DocMeta.setdocmeta!(GsvdInitialization, :DocTestSetup, :(using GsvdInitialization); recursive=true)
+DocMeta.setdocmeta!(GsvdInitialization, :DocTestSetup, :(using GsvdInitialization); recursive = true)
 @testset "Doctests" begin
     doctest(GsvdInitialization; manual = false)
 end
@@ -55,13 +57,13 @@ svdX = load_svd_of_gt()
     rng = StableRNG(1)
     W = W_GT
     H = H_GT
-    X = W*H
-    standard_nmf = nnmf(X, 10; alg = :cd, init=:nndsvd, tol=1e-4, maxiter = 10^5, initdata = svdX)
-    result_gsvd, Λ_gsvd = gsvdnmf(X, 9=>10; alg = :cd, maxiter = 10^5, tol_final=1e-4, tol_intermediate = 1e-4);
+    X = W * H
+    standard_nmf = nnmf(X, 10; alg = :cd, init = :nndsvd, tol = 1.0e-4, maxiter = 10^5, initdata = svdX)
+    result_gsvd, Λ_gsvd = gsvdnmf(X, 9 => 10; alg = :cd, maxiter = 10^5, tol_final = 1.0e-4, tol_intermediate = 1.0e-4)
     W_gsvd, H_gsvd = result_gsvd.W, result_gsvd.H
     @test size(W_gsvd, 2) == 10
-    @test sum(abs2, X-W_gsvd*H_gsvd)/sum(abs2, X) < 2e-10
-    @test sum(abs2, X-standard_nmf.W*standard_nmf.H)/sum(abs2, X) > sum(abs2, X-W_gsvd*H_gsvd)/sum(abs2, X)
+    @test sum(abs2, X - W_gsvd * H_gsvd) / sum(abs2, X) < 2.0e-10
+    @test sum(abs2, X - standard_nmf.W * standard_nmf.H) / sum(abs2, X) > sum(abs2, X - W_gsvd * H_gsvd) / sum(abs2, X)
     @test length(Λ_gsvd) == 9
 
     # `gsvdnmf(X, n2)` is sugar for `gsvdnmf(X, n2-1 => n2)`.  The two calls run
@@ -69,12 +71,12 @@ svdX = load_svd_of_gt()
     # multithreaded BLAS in `nnmf`; `rtol = 1e-6` stays far tighter than the
     # `1e-4` NMF tol.
     X = rand(rng, 30, 20)
-    result_1, _ = gsvdnmf(X, 10; alg=:cd)
-    result_2, _ = gsvdnmf(X, 9 => 10; alg=:cd)
+    result_1, _ = gsvdnmf(X, 10; alg = :cd)
+    result_2, _ = gsvdnmf(X, 9 => 10; alg = :cd)
     W_gsvd_1, H_gsvd_1 = result_1.W, result_1.H
     W_gsvd_2, H_gsvd_2 = result_2.W, result_2.H
-    @test isapprox(W_gsvd_1, W_gsvd_2; rtol = 1e-6)
-    @test isapprox(H_gsvd_1, H_gsvd_2; rtol = 1e-6)
+    @test isapprox(W_gsvd_1, W_gsvd_2; rtol = 1.0e-6)
+    @test isapprox(H_gsvd_1, H_gsvd_2; rtol = 1.0e-6)
 
     # n2 == size(W, 2) is a caller bug: there is nothing to augment.  Reject it
     # eagerly rather than silently returning the input factorization.
@@ -103,38 +105,38 @@ end
 @testset "GsvdInitialization" begin
     rng = StableRNG(2)
     W, H = rand(rng, 10, 3), rand(rng, 3, 8)
-    X = W*H
+    X = W * H
     U, S, V = svd(X)
 
     W0, H0 = copy(W), copy(H)
     Hadd = rand(rng, 2, 8)
     Wadd, a = GsvdInitialization.init_W(X, W0, H0, Hadd)
     @test a ≈ ones(size(W0, 2))
-    @test norm(Wadd) <= 1e-8
+    @test norm(Wadd) <= 1.0e-8
 
     W0, H0 = zero(W), zero(H)
-    Hadd = V[:,1:3]'
+    Hadd = V[:, 1:3]'
     Wadd, a = GsvdInitialization.init_W(X, W0, H0, Hadd)
-    @test sum(abs2, Wadd-(U*Diagonal(S))[:,1:3]) <= 1e-12
+    @test sum(abs2, Wadd - (U * Diagonal(S))[:, 1:3]) <= 1.0e-12
 
     W0, H0 = rand(rng, 10, 4), rand(rng, 4, 8)
     Hadd = rand(rng, 2, 8)
     A, b, C, HH, γ = GsvdInitialization.obj_para(X, W0, H0, Hadd)
     a = rand(rng, 4)
     Wadd, a = GsvdInitialization.init_W(X, W0, H0, Hadd, α = a)
-    E = a'*A*a+2*b'*a+C
-    @test abs(E-sum(abs2, X-[repeat(a', size(W0, 1)).*W0 Wadd]*[H0;Hadd])) <= 1e-12
+    E = a' * A * a + 2 * b' * a + C
+    @test abs(E - sum(abs2, X - [repeat(a', size(W0, 1)) .* W0 Wadd] * [H0;Hadd])) <= 1.0e-12
 
     β0 = rand(rng, 3)
-    β = GsvdInitialization.Wcols_modification(X, repeat(β0', size(W, 1)).*W, H)
-    @test β.*β0 ≈ ones(3)
+    β = GsvdInitialization.Wcols_modification(X, repeat(β0', size(W, 1)) .* W, H)
+    @test β .* β0 ≈ ones(3)
 
     # When H0 is parallel to Hadd the Schur complement vanishes and A = 0, making
     # the QP degenerate.  init_W must return finite results rather than throwing
     # SingularException (which fnnls raises on Julia ≥ 1.12 for a zero pivot).
     W0_deg = rand(rng, Float64, 5, 1)
     H0_deg = rand(rng, Float64, 1, 8)
-    X_deg  = W0_deg * H0_deg
+    X_deg = W0_deg * H0_deg
     Hadd_deg = H0_deg   # parallel to H0 → Schur complement = 0 → A = 0
     Wadd_deg, a_deg = GsvdInitialization.init_W(X_deg, W0_deg, H0_deg, Hadd_deg)
     @test all(isfinite, Wadd_deg)
@@ -151,39 +153,39 @@ end
     U = rand(rng, 10, 3)
     V = rand(rng, 3, 8)
     Xdense = U * V
-    Xfact  = MockFactored(U, V)
+    Xfact = MockFactored(U, V)
     W0, H0 = rand(rng, 10, 4), rand(rng, 4, 8)
-    Hadd   = rand(rng, 2, 8)
-    fs     = svd(Xdense)
-    f      = (fs.U, fs.S, fs.V)
+    Hadd = rand(rng, 2, 8)
+    fs = svd(Xdense)
+    f = (fs.U, fs.S, fs.V)
 
     # `init_W` agrees across both X representations.
     Wadd_d, a_d = GsvdInitialization.init_W(Xdense, W0, H0, Hadd)
-    Wadd_f, a_f = GsvdInitialization.init_W(Xfact,  W0, H0, Hadd)
+    Wadd_f, a_f = GsvdInitialization.init_W(Xfact, W0, H0, Hadd)
     @test Wadd_d ≈ Wadd_f
-    @test a_d    ≈ a_f
+    @test a_d ≈ a_f
 
     # `Wcols_modification` likewise.
     β0 = rand(rng, 4)
     W_scaled = repeat(β0', size(W0, 1)) .* W0
     @test GsvdInitialization.Wcols_modification(Xdense, W_scaled, H0) ≈
-          GsvdInitialization.Wcols_modification(Xfact,  W_scaled, H0)
+        GsvdInitialization.Wcols_modification(Xfact, W_scaled, H0)
 
     # End-to-end `gsvdrecover` agrees on the components it returns.
     Wd, Hd, _ = GsvdInitialization.gsvdrecover(Xdense, copy(W0), copy(H0), 2, f)
-    Wf, Hf, _ = GsvdInitialization.gsvdrecover(Xfact,  copy(W0), copy(H0), 2, f)
+    Wf, Hf, _ = GsvdInitialization.gsvdrecover(Xfact, copy(W0), copy(H0), 2, f)
     @test Wd ≈ Wf
     @test Hd ≈ Hf
 
     # The `joint_nnls` strategy also accepts a factored `X` (it needs `X - W*H`
     # and `eltype(X)` on top of `*`/`sum(abs2, ·)`).
     Wjd, ajd = GsvdInitialization.init_W_joint_nnls(Xdense, W0, H0, Hadd)
-    Wjf, ajf = GsvdInitialization.init_W_joint_nnls(Xfact,  W0, H0, Hadd)
+    Wjf, ajf = GsvdInitialization.init_W_joint_nnls(Xfact, W0, H0, Hadd)
     @test Wjd ≈ Wjf
     @test ajd ≈ ajf
 
     Wd_j, Hd_j, _ = GsvdInitialization.gsvdrecover(GsvdInitialization.joint_nnls, Xdense, copy(W0), copy(H0), 2, f)
-    Wf_j, Hf_j, _ = GsvdInitialization.gsvdrecover(GsvdInitialization.joint_nnls, Xfact,  copy(W0), copy(H0), 2, f)
+    Wf_j, Hf_j, _ = GsvdInitialization.gsvdrecover(GsvdInitialization.joint_nnls, Xfact, copy(W0), copy(H0), 2, f)
     @test Wd_j ≈ Wf_j
     @test Hd_j ≈ Hf_j
 end
@@ -208,14 +210,14 @@ end
     # as plain `Int` — no `MethodError` from over-tight signatures.  Each pair
     # runs the same pipeline twice, so `rtol = 1e-6` for the same reason as the
     # cross-call checks in "test top wrapper".
-    r_int,   _ = gsvdnmf(X, 9 => 10; alg = :cd)
+    r_int, _ = gsvdnmf(X, 9 => 10; alg = :cd)
     r_int32, _ = gsvdnmf(X, Int32(9) => Int32(10); alg = :cd)
-    @test isapprox(r_int.W, r_int32.W; rtol = 1e-6)
-    @test isapprox(r_int.H, r_int32.H; rtol = 1e-6)
+    @test isapprox(r_int.W, r_int32.W; rtol = 1.0e-6)
+    @test isapprox(r_int.H, r_int32.H; rtol = 1.0e-6)
 
-    r_n2_int,   _ = gsvdnmf(X, 10; alg = :cd)
+    r_n2_int, _ = gsvdnmf(X, 10; alg = :cd)
     r_n2_int32, _ = gsvdnmf(X, Int32(10); alg = :cd)
-    @test isapprox(r_n2_int.W, r_n2_int32.W; rtol = 1e-6)
+    @test isapprox(r_n2_int.W, r_n2_int32.W; rtol = 1.0e-6)
 
     # `gsvdrecover` likewise accepts a non-`Int` `kadd`.
     Wfit, Hfit = rand(rng, 30, 4), rand(rng, 4, 20)
@@ -232,15 +234,15 @@ end
     # BLAS in `nnmf`; `rtol = 1e-6` stays far tighter than the `1e-4` NMF tol.
     r_default, _ = gsvdnmf(X, 9 => 10; alg = :cd)
     r_explicit, _ = gsvdnmf(GsvdInitialization.truncating, X, 9 => 10; alg = :cd)
-    @test isapprox(r_default.W, r_explicit.W; rtol = 1e-6)
-    @test isapprox(r_default.H, r_explicit.H; rtol = 1e-6)
+    @test isapprox(r_default.W, r_explicit.W; rtol = 1.0e-6)
+    @test isapprox(r_default.H, r_explicit.H; rtol = 1.0e-6)
 
     # do-block form: anonymous strategy that simply forwards to `truncating`
     r_doblock, _ = gsvdnmf(X, 9 => 10; alg = :cd) do X0, W0, H0, Hadd
         GsvdInitialization.truncating(X0, W0, H0, Hadd)
     end
-    @test isapprox(r_doblock.W, r_default.W; rtol = 1e-6)
-    @test isapprox(r_doblock.H, r_default.H; rtol = 1e-6)
+    @test isapprox(r_doblock.W, r_default.W; rtol = 1.0e-6)
+    @test isapprox(r_doblock.H, r_default.H; rtol = 1.0e-6)
 end
 
 @testset "integer-n2 convenience methods and :multmse" begin
@@ -253,8 +255,8 @@ end
     r_default, _ = gsvdnmf(X, W, H, 5; alg = :cd)
     r_strategy, _ = gsvdnmf(GsvdInitialization.truncating, X, W, H, 5; alg = :cd)
     @test size(r_default.W, 2) == 5
-    @test isapprox(r_default.W, r_strategy.W; rtol = 1e-6)
-    @test isapprox(r_default.H, r_strategy.H; rtol = 1e-6)
+    @test isapprox(r_default.W, r_strategy.W; rtol = 1.0e-6)
+    @test isapprox(r_default.H, r_strategy.H; rtol = 1.0e-6)
 
     # :multmse floors the augmented factors to `truncmult` so multiplicative
     # updates (which cannot move entries off zero) can polish them.
@@ -316,37 +318,37 @@ end
     # ~1e-9 nondeterminism of multithreaded BLAS; `rtol = 1e-6` as in the
     # cross-call checks above.
     r_plain, _ = gsvdnmf(X, copy(W), copy(H), f; n2 = 5, alg = :cd)
-    r_view, _  = gsvdnmf(vX, vW, vH, f; n2 = 5, alg = :cd)
-    @test isapprox(r_plain.W, r_view.W; rtol = 1e-6)
-    @test isapprox(r_plain.H, r_view.H; rtol = 1e-6)
+    r_view, _ = gsvdnmf(vX, vW, vH, f; n2 = 5, alg = :cd)
+    @test isapprox(r_plain.W, r_view.W; rtol = 1.0e-6)
+    @test isapprox(r_plain.H, r_view.H; rtol = 1.0e-6)
 end
 
 @testset "joint optimize W and alpha" begin
     rng = StableRNG(7)
     W = W_GT
     H = H_GT
-    X = W*H
-    result_joint, _ = gsvdnmf(GsvdInitialization.joint_nnls, X, 9=>10; alg = :cd, maxiter = 10^5, tol_final=1e-4, tol_intermediate = 1e-4);
+    X = W * H
+    result_joint, _ = gsvdnmf(GsvdInitialization.joint_nnls, X, 9 => 10; alg = :cd, maxiter = 10^5, tol_final = 1.0e-4, tol_intermediate = 1.0e-4)
     W_gsvd, H_gsvd = result_joint.W, result_joint.H
     @test size(W_gsvd, 2) == 10
-    @test sum(abs2, X-W_gsvd*H_gsvd)/sum(abs2, X) < 2e-10
+    @test sum(abs2, X - W_gsvd * H_gsvd) / sum(abs2, X) < 2.0e-10
 
     W, H = rand(rng, 10, 3), rand(rng, 3, 8)
-    X = W*H
+    X = W * H
     U, S, V = svd(X)
 
     W0, H0 = copy(W), copy(H)
     Hadd = rand(rng, 2, 8)
     Wadd, a = GsvdInitialization.init_W_joint_nnls(X, W0, H0, Hadd)
     @test a ≈ ones(size(W0, 2))
-    @test norm(Wadd) <= 1e-8
+    @test norm(Wadd) <= 1.0e-8
 
     G = GsvdInitialization.gram_sp_C(W0, H0, Hadd)[1]
     b = GsvdInitialization.gram_b(X, W0, H0, Hadd)
     Wadd = rand(rng, 10, 2)
     α = rand(rng, 3)
     θ = vcat(vec(Wadd), α)
-    E = θ'*G*θ-2*b'*θ+sum(abs2, X)
-    @test abs(E-sum(abs2, X-[repeat(α', size(W0, 1)).*W0 Wadd]*[H0;Hadd])) <= 1e-12
+    E = θ' * G * θ - 2 * b' * θ + sum(abs2, X)
+    @test abs(E - sum(abs2, X - [repeat(α', size(W0, 1)) .* W0 Wadd] * [H0;Hadd])) <= 1.0e-12
 
 end
