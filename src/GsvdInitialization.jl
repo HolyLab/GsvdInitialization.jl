@@ -1,6 +1,6 @@
 module GsvdInitialization
 
-using LinearAlgebra: Diagonal, I, Symmetric, diag, isposdef, svd
+using LinearAlgebra: Diagonal, I, Symmetric, UpperTriangular, cholesky, diag, isposdef, svd, tr
 using NMF: NMF, nnmf, nndsvd
 using TSVD: tsvd
 using NonNegLeastSquares: nonneg_lsq
@@ -208,7 +208,6 @@ end
 
 function init_H(U0::AbstractMatrix, S0::AbstractVector, V0::AbstractMatrix, W0::AbstractMatrix, H0::AbstractMatrix, kadd::Integer)
     _, _, Q, D1, D2, R = svd(Matrix(Diagonal(S0)), (U0'*W0)*(H0*V0));
-    inv_RQt = inv(R*Q')
     r0 = size(U0, 2)
     k = findfirst(x->x!=0, D2[1,:])
     k = (k === nothing) ? r0 : k-1
@@ -216,7 +215,14 @@ function init_H(U0::AbstractMatrix, S0::AbstractVector, V0::AbstractMatrix, W0::
     F = (diag(D1[k+1:r0, k+1:r0])./diag(D2[1:r0-k,k+1:r0])).^2
     Λ = vcat(fill(Inf, k), F)
     H_index = sortperm(Λ, rev = true)[1:kadd]
-    Hadd = inv_RQt[:, H_index]
+    # Columns of inv(R*Q') = Q*inv(R) selected by H_index, via a triangular
+    # backsolve on just those right-hand sides: the GSVD's Q is orthogonal and
+    # R is square upper triangular (Diagonal(S0) is nonsingular, so k+l = r0).
+    E = zeros(eltype(R), size(R, 1), length(H_index))
+    for (j, idx) in enumerate(H_index)
+        E[idx, j] = 1
+    end
+    Hadd = Q * (UpperTriangular(R) \ E)
     Hadd_1 = V0*Hadd
     return Hadd_1', Λ
 end
@@ -256,7 +262,7 @@ function gram_b(X, W0, H0, Hadd)
 end
 
 function init_W(X, W0::AbstractMatrix{T}, H0::AbstractMatrix{T}, Hadd::AbstractMatrix{T}; α = nothing) where T
-    A, b, _, invHH, H0Hadd, XHaddt = obj_para(X, W0, H0, Hadd)
+    A, b, _, cholHH, H0Hadd, XHaddt = obj_para(X, W0, H0, Hadd)
     if α === nothing
         if isposdef(A)
             α = nonneg_lsq(A, -b; alg=:fnnls, gram=true)
@@ -268,7 +274,7 @@ function init_W(X, W0::AbstractMatrix{T}, H0::AbstractMatrix{T}, Hadd::AbstractM
             α = ones(T, size(A, 1))
         end
     end
-    Wadd = XHaddt*invHH-W0*Diagonal(α[:])*H0Hadd*invHH
+    Wadd = (XHaddt - W0*Diagonal(α[:])*H0Hadd) / cholHH
     return Wadd, abs.(α)
 end
 
@@ -278,13 +284,13 @@ function obj_para(X, W0::AbstractMatrix{T}, H0::AbstractMatrix{T}, Hadd::Abstrac
     HH = Hadd*Hadd'
     W0W0 = W0'*W0
     H0H0 = H0*H0'
-    invHH = inv(HH)
-    A = W0W0.*(H0H0-H0Hadd*invHH*H0Hadd')
+    cholHH = cholesky(Symmetric(HH))
+    A = W0W0.*(H0H0-H0Hadd*(cholHH \ H0Hadd'))
     W0tXH0t = W0'*X*H0'
     W0XHaddt = W0'*XHaddt
-    b = diag(H0Hadd*invHH*W0XHaddt'-W0tXH0t)
-    C = sum(abs2, X)-sum(invHH.*(XHaddt'*XHaddt))
-    return Symmetric(A), b, C, invHH, H0Hadd, XHaddt
+    b = diag(H0Hadd*(cholHH \ W0XHaddt')-W0tXH0t)
+    C = sum(abs2, X)-tr(cholHH \ (XHaddt'*XHaddt))
+    return Symmetric(A), b, C, cholHH, H0Hadd, XHaddt
 end
 
 function Wcols_modification(X, W::AbstractMatrix{T}, H::AbstractMatrix{T}) where T
