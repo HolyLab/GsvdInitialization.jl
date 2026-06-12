@@ -4,6 +4,7 @@ using Aqua
 using ExplicitImports
 
 using LinearAlgebra, NMF, FileIO
+using OffsetArrays
 using StableRNGs
 
 @testset "Aqua" begin
@@ -234,6 +235,58 @@ end
     end
     @test isapprox(r_doblock.W, r_default.W; rtol = 1e-6)
     @test isapprox(r_doblock.H, r_default.H; rtol = 1e-6)
+end
+
+@testset "generic axes" begin
+    # The pipeline runs through `svd`, `nndsvd`, `nnmf`, and `sparse`, all of
+    # which assume 1-based indexing, so the public entry points declare that
+    # assumption with `require_one_based_indexing`.  Offset-axes inputs must
+    # fail at entry with a clear error — without the declaration they fail deep
+    # inside LinearAlgebra, or worse: an offset SVD wider than `size(W0, 2)`
+    # makes the `1:n` factor slices succeed on the wrong columns, silently
+    # returning wrong factors.
+    rng = StableRNG(8)
+    W, H = rand(rng, 10, 4), rand(rng, 4, 8)
+    X = W * H + 0.01 * rand(rng, 10, 8)
+    fs = svd(X)
+    f = (fs.U, fs.S, fs.V)
+    msg = "offset arrays are not supported"
+
+    Xo = OffsetArray(X, -2, -3)
+    Wo = OffsetArray(W, -2, 0)
+    Ho = OffsetArray(H, 0, -3)
+    # Full SVD of X has 8 components > size(W, 2) = 4: the silent-wrong-columns
+    # shape.
+    fo = (OffsetArray(fs.U, 0, -1), OffsetArray(fs.S, -1), OffsetArray(fs.V, 0, -1))
+
+    @test_throws msg gsvdnmf(Xo, 3 => 4; alg = :cd)
+    @test_throws msg gsvdnmf(X, Wo, Ho, f; n2 = 5)
+    @test_throws msg gsvdrecover(X, Wo, Ho, 1, f)
+    @test_throws msg gsvdrecover(Xo, W, H, 1, f)
+    @test_throws msg gsvdrecover(X, W, H, 1, fo)
+    Hadd = rand(rng, 1, 8)
+    @test_throws msg GsvdInitialization.truncating(X, Wo, H, Hadd)
+    @test_throws msg GsvdInitialization.joint_nnls(X, Wo, H, Hadd)
+
+    # Lazy wrappers carry no axis shift; they must reproduce plain-input
+    # results.
+    vX, vW, vH = view(X, :, :), view(W, :, :), view(H, :, :)
+    Wr, Hr, Λr = gsvdrecover(X, copy(W), copy(H), 2, f)
+    Wv, Hv, Λv = gsvdrecover(vX, vW, vH, 2, f)
+    @test Wv ≈ Wr
+    @test Hv ≈ Hr
+    @test Λv ≈ Λr
+    Wjr, Hjr, _ = gsvdrecover(GsvdInitialization.joint_nnls, X, copy(W), copy(H), 2, f)
+    Wjv, Hjv, _ = gsvdrecover(GsvdInitialization.joint_nnls, vX, vW, vH, 2, f)
+    @test Wjv ≈ Wjr
+    @test Hjv ≈ Hjr
+    # `gsvdnmf` runs `nnmf`, so two runs of the same pipeline agree only to the
+    # ~1e-9 nondeterminism of multithreaded BLAS; `rtol = 1e-6` as in the
+    # cross-call checks above.
+    r_plain, _ = gsvdnmf(X, copy(W), copy(H), f; n2 = 5, alg = :cd)
+    r_view, _  = gsvdnmf(vX, vW, vH, f; n2 = 5, alg = :cd)
+    @test isapprox(r_plain.W, r_view.W; rtol = 1e-6)
+    @test isapprox(r_plain.H, r_view.H; rtol = 1e-6)
 end
 
 @testset "joint optimize W and alpha" begin

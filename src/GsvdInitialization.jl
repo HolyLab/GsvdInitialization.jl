@@ -38,6 +38,8 @@ Arguments:
 
 - `f`: SVD (or Truncated SVD) of `X`
 
+All array arguments, including the factors of `f`, must use 1-based indexing.
+
 Keyword arguments:
 
 - `tol_final`: the tolerance of the NMF polishing step, default: 1e-4
@@ -62,6 +64,7 @@ function gsvdnmf(strategy, X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatr
                  alg = :cd,
                  truncmult = 1e-5,
                  kwargs...)
+    Base.require_one_based_indexing(X, W, H)
     n1 = size(W, 2)
     kadd = n2 - n1
     kadd > 0 || throw(ArgumentError("The number of components to add must be positive; got n2 = $n2, size(W, 2) = $n1"))
@@ -109,6 +112,7 @@ Keyword arguments:
 Other keyword arguments are passed to `NMF.nnmf`.
 """
 function gsvdnmf(strategy, X::AbstractMatrix, ncomponents::Pair{<:Integer,<:Integer}; tol_final=1e-4, tol_intermediate=tol_final, kwargs...)
+    Base.require_one_based_indexing(X)
     n1, n2 = ncomponents
     f = tsvd(X, n2)
     W0, H0 = nndsvd(X, n1; initdata = (U = f[1], S = f[2], V = f[3]))
@@ -152,13 +156,22 @@ Arguments:
 `kadd`: number of new components
 
 `f`: SVD (or Truncated SVD) of `X`
+
+All array arguments, including the factors of `f`, must use 1-based indexing.
 """
 function gsvdrecover(strategy, X, W0::AbstractMatrix, H0::AbstractMatrix, kadd::Integer, f)
+    # `X` may be a non-array factored representation (see the docstring); only
+    # arrays carry axes to validate.
+    X isa AbstractArray && Base.require_one_based_indexing(X)
+    Base.require_one_based_indexing(W0, H0)
     _, n = size(W0)
     kadd > 0 || throw(ArgumentError("kadd must be positive; got $kadd"))
     kadd <= n || throw(ArgumentError("the number of extra columns must be at most size(W0, 2); got kadd = $kadd, size(W0, 2) = $n"))
     size(first(f), 2) >= n || throw(ArgumentError("the supplied SVD has $(size(first(f), 2)) components but size(W0, 2) = $n are required"))
     U0, S0, V0 = f
+    # An offset-axes SVD wider than `n` would make the `1:n` slices below
+    # succeed on the wrong columns; reject it before slicing.
+    Base.require_one_based_indexing(U0, S0, V0)
     U0, S0, V0 = U0[:,1:n], S0[1:n], V0[:,1:n]
     Hadd, Λ = init_H(U0, S0, V0, W0, H0, kadd)
     W, H = strategy(X, W0, H0, Hadd)
@@ -177,6 +190,8 @@ to solve for the new columns of `W` (i.e., `Wadd`).
 Returns non-negative `(W_augmented, H_augmented)`.
 """
 function truncating(X, W0::AbstractMatrix, H0::AbstractMatrix, Hadd::AbstractMatrix)
+    X isa AbstractArray && Base.require_one_based_indexing(X)
+    Base.require_one_based_indexing(W0, H0, Hadd)
     kadd = size(Hadd, 1)
     Wadd, a = init_W(X, W0, H0, Hadd)
     Wadd_nn, Hadd_nn = nndsvd(X, kadd, initdata = (U = Wadd, S = ones(eltype(Wadd), kadd), V = Hadd'))
@@ -200,6 +215,8 @@ projecting `Hadd`).
 Returns non-negative `(W_augmented, H_augmented)`.
 """
 function joint_nnls(X, W0::AbstractMatrix, H0::AbstractMatrix, Hadd::AbstractMatrix)
+    X isa AbstractArray && Base.require_one_based_indexing(X)
+    Base.require_one_based_indexing(W0, H0, Hadd)
     Hadd_nn = truncatepos(Hadd', X, W0, H0)'
     Wadd, a = init_W_joint_nnls(X, W0, H0, Hadd_nn)
     W0_1, H0_1 = [a' .* W0 Wadd], [H0; Hadd_nn]
