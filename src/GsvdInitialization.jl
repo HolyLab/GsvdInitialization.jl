@@ -157,6 +157,7 @@ function gsvdrecover(strategy, X, W0::AbstractMatrix, H0::AbstractMatrix, kadd::
     _, n = size(W0)
     kadd > 0 || throw(ArgumentError("kadd must be positive; got $kadd"))
     kadd <= n || throw(ArgumentError("# of extra columns must less than 1st NMF components"))
+    size(first(f), 2) >= n || throw(ArgumentError("the supplied SVD has $(size(first(f), 2)) components but size(W0, 2) = $n are required"))
     U0, S0, V0 = f
     U0, S0, V0 = U0[:,1:n], S0[1:n], V0[:,1:n]
     Hadd, Λ = init_H(U0, S0, V0, W0, H0, kadd)

@@ -68,6 +68,11 @@ svdX = load_svd_of_gt()
     @test_throws "must be positive" gsvdnmf(X, Wfit, Hfit, (f.U, f.S, f.V); n2 = 5)
     @test_throws "must be positive" gsvdrecover(X, Wfit, Hfit, 0, (f.U, f.S, f.V))
 
+    # An SVD with fewer components than `size(W0, 2)` cannot seed the
+    # generalized SVD; reject it with a clear message rather than a BoundsError.
+    fsmall = (f.U[:, 1:3], f.S[1:3], f.V[:, 1:3])
+    @test_throws "has 3 components but size(W0, 2) = 5" gsvdrecover(X, Wfit, Hfit, 1, fsmall)
+
     # `alg` must reach the polishing `nnmf`.  An unknown algorithm name is
     # rejected by `nnmf` only if `alg` is forwarded; the polishing call is the
     # sole `nnmf` invocation in this four-argument path.
