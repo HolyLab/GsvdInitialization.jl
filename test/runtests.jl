@@ -57,13 +57,17 @@ svdX = load_svd_of_gt()
     @test sum(abs2, X-standard_nmf.W*standard_nmf.H)/sum(abs2, X) > sum(abs2, X-W_gsvd*H_gsvd)/sum(abs2, X)
     @test length(Λ_gsvd) == 9
 
+    # `gsvdnmf(X, n2)` is sugar for `gsvdnmf(X, n2-1 => n2)`.  The two calls run
+    # the same pipeline, so they agree only up to the ~1e-9 nondeterminism of
+    # multithreaded BLAS in `nnmf`; `rtol = 1e-6` stays far tighter than the
+    # `1e-4` NMF tol.
     X = rand(rng, 30, 20)
     result_1, _ = gsvdnmf(X, 10; alg=:cd)
     result_2, _ = gsvdnmf(X, 9 => 10; alg=:cd)
     W_gsvd_1, H_gsvd_1 = result_1.W, result_1.H
     W_gsvd_2, H_gsvd_2 = result_2.W, result_2.H
-    @test sum(abs2, W_gsvd_1-W_gsvd_2) <= 1e-12
-    @test sum(abs2, H_gsvd_1-H_gsvd_2) <= 1e-12
+    @test isapprox(W_gsvd_1, W_gsvd_2; rtol = 1e-6)
+    @test isapprox(H_gsvd_1, H_gsvd_2; rtol = 1e-6)
 
     # n2 == size(W, 2) is a caller bug: there is nothing to augment.  Reject it
     # eagerly rather than silently returning the input factorization.
@@ -194,15 +198,17 @@ end
     rng = StableRNG(5)
     X = rand(rng, 30, 20)
     # Non-`Int` integer types (e.g. `Int32`) must dispatch on the same methods
-    # as plain `Int` — no `MethodError` from over-tight signatures.
+    # as plain `Int` — no `MethodError` from over-tight signatures.  Each pair
+    # runs the same pipeline twice, so `rtol = 1e-6` for the same reason as the
+    # cross-call checks in "test top wrapper".
     r_int,   _ = gsvdnmf(X, 9 => 10; alg = :cd)
     r_int32, _ = gsvdnmf(X, Int32(9) => Int32(10); alg = :cd)
-    @test r_int.W ≈ r_int32.W
-    @test r_int.H ≈ r_int32.H
+    @test isapprox(r_int.W, r_int32.W; rtol = 1e-6)
+    @test isapprox(r_int.H, r_int32.H; rtol = 1e-6)
 
     r_n2_int,   _ = gsvdnmf(X, 10; alg = :cd)
     r_n2_int32, _ = gsvdnmf(X, Int32(10); alg = :cd)
-    @test r_n2_int.W ≈ r_n2_int32.W
+    @test isapprox(r_n2_int.W, r_n2_int32.W; rtol = 1e-6)
 
     # `gsvdrecover` likewise accepts a non-`Int` `kadd`.
     Wfit, Hfit = rand(rng, 30, 4), rand(rng, 4, 20)
