@@ -169,6 +169,18 @@ end
     @test Hd_j ≈ Hf_j
 end
 
+@testset "eltype genericity" begin
+    # The default (`truncating`) path must preserve the input eltype rather than
+    # silently promoting to `Float64`.
+    W = rand(Float32, 12, 4)
+    H = rand(Float32, 4, 9)
+    X = W * H
+    fs = svd(X)
+    Wa, Ha, _ = gsvdrecover(X, copy(W), copy(H), 2, (fs.U, fs.S, fs.V))
+    @test eltype(Wa) === Float32
+    @test eltype(Ha) === Float32
+end
+
 @testset "integer-typed component counts" begin
     X = rand(30, 20)
     # Non-`Int` integer types (e.g. `Int32`) must dispatch on the same methods

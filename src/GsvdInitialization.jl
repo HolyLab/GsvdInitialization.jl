@@ -180,7 +180,7 @@ function truncating(X, W0::AbstractMatrix, H0::AbstractMatrix, Hadd::AbstractMat
     m = size(W0, 1)
     kadd = size(Hadd, 1)
     Wadd, a = init_W(X, W0, H0, Hadd)
-    Wadd_nn, Hadd_nn = nndsvd(X, kadd, initdata = (U = Wadd, S = ones(kadd), V = Hadd'))
+    Wadd_nn, Hadd_nn = nndsvd(X, kadd, initdata = (U = Wadd, S = ones(eltype(Wadd), kadd), V = Hadd'))
     W0_1, H0_1 = [repeat(a', m, 1).*W0 Wadd_nn], [H0; Hadd_nn]
     cs = Wcols_modification(X, W0_1, H0_1)
     W0_2, H0_2 = repeat(cs', m, 1).*W0_1, H0_1
@@ -242,7 +242,7 @@ function gram_sp_C(W0, H0, Hadd)
     P = Hadd*H0'
     HH = Hadd*Hadd'
     G22 = sparse(W0W0.*H0H0)
-    G12 = zeros(Float64, mk, r0)
+    G12 = zeros(eltype(W0W0), mk, r0)
     for j in 1:r0
         G12[:,j] .= vec(W0[:,j] * P[:,j]')
     end
