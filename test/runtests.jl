@@ -1,6 +1,7 @@
 using GsvdInitialization
 using Test
 using Aqua
+using Documenter
 using ExplicitImports
 
 using LinearAlgebra, NMF, FileIO
@@ -17,6 +18,11 @@ end
                           ignore = (:nndsvd,),
                           all_explicit_imports_are_public = VERSION >= v"1.11",
                           all_qualified_accesses_are_public = VERSION >= v"1.11")
+end
+
+DocMeta.setdocmeta!(GsvdInitialization, :DocTestSetup, :(using GsvdInitialization); recursive=true)
+@testset "Doctests" begin
+    doctest(GsvdInitialization; manual = false)
 end
 
 # Minimal `Factorization` subtype that implements just the matrix products and
