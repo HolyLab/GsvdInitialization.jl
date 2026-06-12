@@ -237,6 +237,32 @@ end
     @test isapprox(r_doblock.H, r_default.H; rtol = 1e-6)
 end
 
+@testset "integer-n2 convenience methods and :multmse" begin
+    rng = StableRNG(9)
+    X = rand(rng, 30, 20)
+    W, H = rand(rng, 30, 4), rand(rng, 4, 20)
+    # `gsvdnmf(X, W, H, n2)` computes `tsvd(X, n2)` itself and forwards to the
+    # explicit-`f` method; the explicit-strategy form runs the same pipeline,
+    # so they agree to the usual cross-call rtol.
+    r_default, _ = gsvdnmf(X, W, H, 5; alg = :cd)
+    r_strategy, _ = gsvdnmf(GsvdInitialization.truncating, X, W, H, 5; alg = :cd)
+    @test size(r_default.W, 2) == 5
+    @test isapprox(r_default.W, r_strategy.W; rtol = 1e-6)
+    @test isapprox(r_default.H, r_strategy.H; rtol = 1e-6)
+
+    # :multmse floors the augmented factors to `truncmult` so multiplicative
+    # updates (which cannot move entries off zero) can polish them.
+    r_mult, _ = gsvdnmf(X, W, H, 5; alg = :multmse, maxiter = 10^4)
+    @test size(r_mult.W, 2) == 5
+    @test r_mult.converged
+    @test all(>=(0), r_mult.W) && all(>=(0), r_mult.H)
+    # A full-rank random X puts the best rank-5 residual near 0.13, so an
+    # absolute bound is meaningless; require :multmse to land close to :cd.
+    res_cd = sum(abs2, X - r_default.W * r_default.H)
+    res_mult = sum(abs2, X - r_mult.W * r_mult.H)
+    @test res_mult <= 1.1 * res_cd
+end
+
 @testset "generic axes" begin
     # The pipeline runs through `svd`, `nndsvd`, `nnmf`, and `sparse`, all of
     # which assume 1-based indexing, so the public entry points declare that
