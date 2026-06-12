@@ -114,7 +114,7 @@ function gsvdnmf(strategy, X::AbstractMatrix, ncomponents::Pair{<:Integer,<:Inte
     W0, H0 = nndsvd(X, n1; initdata = (U = f[1], S = f[2], V = f[3]))
     result_initial_nmf = nnmf(X, n1; kwargs..., init=:custom, tol=tol_intermediate, W0=copy(W0), H0=copy(H0))
     W_initial_nmf, H_initial_nmf = result_initial_nmf.W, result_initial_nmf.H
-    return gsvdnmf(strategy, X, W_initial_nmf, H_initial_nmf, f; kwargs..., n2=n2, tol_final)
+    return gsvdnmf(strategy, X, W_initial_nmf, H_initial_nmf, f; kwargs..., n2, tol_final)
 end
 gsvdnmf(X::AbstractMatrix, ncomponents::Pair{<:Integer,<:Integer}; kwargs...) =
     gsvdnmf(truncating, X, ncomponents; kwargs...)
@@ -177,13 +177,12 @@ to solve for the new columns of `W` (i.e., `Wadd`).
 Returns non-negative `(W_augmented, H_augmented)`.
 """
 function truncating(X, W0::AbstractMatrix, H0::AbstractMatrix, Hadd::AbstractMatrix)
-    m = size(W0, 1)
     kadd = size(Hadd, 1)
     Wadd, a = init_W(X, W0, H0, Hadd)
     Wadd_nn, Hadd_nn = nndsvd(X, kadd, initdata = (U = Wadd, S = ones(eltype(Wadd), kadd), V = Hadd'))
-    W0_1, H0_1 = [repeat(a', m, 1).*W0 Wadd_nn], [H0; Hadd_nn]
+    W0_1, H0_1 = [a' .* W0 Wadd_nn], [H0; Hadd_nn]
     cs = Wcols_modification(X, W0_1, H0_1)
-    W0_2, H0_2 = repeat(cs', m, 1).*W0_1, H0_1
+    W0_2, H0_2 = cs' .* W0_1, H0_1
     return abs.(W0_2), abs.(H0_2)
 end
 
@@ -201,10 +200,9 @@ projecting `Hadd`).
 Returns non-negative `(W_augmented, H_augmented)`.
 """
 function joint_nnls(X, W0::AbstractMatrix, H0::AbstractMatrix, Hadd::AbstractMatrix)
-    m = size(W0, 1)
     Hadd_nn = truncatepos(Hadd', X, W0, H0)'
     Wadd, a = init_W_joint_nnls(X, W0, H0, Hadd_nn)
-    W0_1, H0_1 = [repeat(a', m, 1).*W0 Wadd], [H0; Hadd_nn]
+    W0_1, H0_1 = [a' .* W0 Wadd], [H0; Hadd_nn]
     return abs.(W0_1), abs.(H0_1)
 end
 
@@ -290,9 +288,6 @@ function obj_para(X, W0::AbstractMatrix{T}, H0::AbstractMatrix{T}, Hadd::Abstrac
 end
 
 function Wcols_modification(X, W::AbstractMatrix{T}, H::AbstractMatrix{T}) where T
-    n = size(W, 2)
-    a = Array{T}(undef, n)
-    B = Array{T}(undef, n, n)
     WW, HH = W'*W, H*H'
     WtXHt = W'*X*H'
     a = diag(WtXHt)
