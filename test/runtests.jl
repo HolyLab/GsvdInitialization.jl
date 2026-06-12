@@ -34,6 +34,9 @@ Base.size(F::MockFactored, d) = d == 1 ? size(F.U, 1) : (d == 2 ? size(F.V, 2) :
 Base.:*(F::MockFactored, A::AbstractMatrix) = F.U * (F.V * A)
 Base.:*(A::AbstractMatrix, F::MockFactored) = (A * F.U) * F.V
 Base.sum(::typeof(abs2), F::MockFactored) = sum((F.U' * F.U) .* (F.V * F.V'))
+# `joint_nnls`'s `truncatepos` step needs `X - W*H`; materializing densely here
+# is fine — the point is that no `AbstractArray` constraint rejects `X`.
+Base.:-(F::MockFactored, A::AbstractMatrix) = F.U * F.V - A
 
 include(joinpath(dirname(@__DIR__), "demo/generate_ground_truth.jl"))
 
@@ -152,6 +155,18 @@ end
     Wf, Hf, _ = GsvdInitialization.gsvdrecover(Xfact,  copy(W0), copy(H0), 2, f)
     @test Wd ≈ Wf
     @test Hd ≈ Hf
+
+    # The `joint_nnls` strategy also accepts a factored `X` (it needs `X - W*H`
+    # and `eltype(X)` on top of `*`/`sum(abs2, ·)`).
+    Wjd, ajd = GsvdInitialization.init_W_joint_nnls(Xdense, W0, H0, Hadd)
+    Wjf, ajf = GsvdInitialization.init_W_joint_nnls(Xfact,  W0, H0, Hadd)
+    @test Wjd ≈ Wjf
+    @test ajd ≈ ajf
+
+    Wd_j, Hd_j, _ = GsvdInitialization.gsvdrecover(GsvdInitialization.joint_nnls, Xdense, copy(W0), copy(H0), 2, f)
+    Wf_j, Hf_j, _ = GsvdInitialization.gsvdrecover(GsvdInitialization.joint_nnls, Xfact,  copy(W0), copy(H0), 2, f)
+    @test Wd_j ≈ Wf_j
+    @test Hd_j ≈ Hf_j
 end
 
 @testset "integer-typed component counts" begin

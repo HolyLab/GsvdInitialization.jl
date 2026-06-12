@@ -194,6 +194,10 @@ Alternative `gsvdrecover` strategy that jointly solves for the new columns of
 `W` and the rescaling `α` of existing columns using nonnegative least-squares
 (NNLS). `Hadd` is first projected onto the non-negative orthant.
 
+Beyond the `*` and `sum(abs2, ·)` that the default [`truncating`](@ref) strategy
+needs from `X`, this path also requires `X - W*H` and `eltype(X)` (used while
+projecting `Hadd`).
+
 Returns non-negative `(W_augmented, H_augmented)`.
 """
 function joint_nnls(X, W0::AbstractMatrix, H0::AbstractMatrix, Hadd::AbstractMatrix)
@@ -219,7 +223,7 @@ function init_H(U0::AbstractMatrix, S0::AbstractVector, V0::AbstractMatrix, W0::
     return Hadd_1', Λ
 end
 
-function init_W_joint_nnls(X::AbstractMatrix{T}, W0::AbstractMatrix{T}, H0::AbstractMatrix{T}, Hadd::AbstractMatrix{T}) where T
+function init_W_joint_nnls(X, W0::AbstractMatrix{T}, H0::AbstractMatrix{T}, Hadd::AbstractMatrix{T}) where T
     m = size(X, 1)
     kadd = size(Hadd, 1)
     G = gram_sp_C(W0, H0, Hadd)[1]
