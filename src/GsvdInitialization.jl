@@ -42,6 +42,14 @@ Keyword arguments:
 
 - `tol_final`: the tolerance of the NMF polishing step, default: 1e-4
 
+- `alg`: the NMF algorithm for the polishing step, forwarded to `NMF.nnmf`,
+  default: `:cd`. When `alg == :multmse` the augmented factors are floored to
+  `truncmult` first, because multiplicative updates require strictly positive
+  factors.
+
+- `truncmult`: the flooring level applied to the augmented factors when
+  `alg == :multmse`, default: 1e-5
+
 Other keyword arguments are passed to `NMF.nnmf`.
 
 Returns the `NMF.NMFResult` from the polishing step (its `W` and `H` fields hold
@@ -63,7 +71,7 @@ function gsvdnmf(strategy, X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatr
     if alg == :multmse
         W_recover, H_recover = max.(W_recover, truncmult), max.(H_recover, truncmult)
     end
-    result_recover = nnmf(X, n2; kwargs..., init=:custom, tol=tol_final, W0=copy(W_recover), H0=copy(H_recover))
+    result_recover = nnmf(X, n2; kwargs..., alg, init=:custom, tol=tol_final, W0=copy(W_recover), H0=copy(H_recover))
     return result_recover, Λ
 end
 gsvdnmf(X::AbstractMatrix, W::AbstractMatrix, H::AbstractMatrix, f; kwargs...) =

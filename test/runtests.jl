@@ -67,6 +67,12 @@ svdX = load_svd_of_gt()
     @test_throws ArgumentError gsvdnmf(X, Wfit, Hfit, (f.U, f.S, f.V); n2 = 5)
     @test_throws "must be positive" gsvdnmf(X, Wfit, Hfit, (f.U, f.S, f.V); n2 = 5)
     @test_throws "must be positive" gsvdrecover(X, Wfit, Hfit, 0, (f.U, f.S, f.V))
+
+    # `alg` must reach the polishing `nnmf`.  An unknown algorithm name is
+    # rejected by `nnmf` only if `alg` is forwarded; the polishing call is the
+    # sole `nnmf` invocation in this four-argument path.
+    Waug, Haug = rand(30, 9), rand(9, 20)
+    @test_throws "Invalid algorithm" gsvdnmf(X, Waug, Haug, (f.U, f.S, f.V); n2 = 10, alg = :__nonexistent__)
 end
 
 @testset "GsvdInitialization" begin
