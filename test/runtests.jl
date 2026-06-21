@@ -95,6 +95,12 @@ svdX = load_svd_of_gt()
     @test_throws "must be at most the initial number of components" gsvdnmf(X, Wfit, Hfit, (f.U, f.S, f.V); n2 = 11)
     @test_throws "must be at most size(W0, 2)" gsvdrecover(X, Wfit, Hfit, 6, (f.U, f.S, f.V))
 
+    # A factorization that is overcomplete relative to X makes the GSVD
+    # ill-posed; the rank check fires before the factor slices are used.
+    Xlow = Wfit * Hfit   # exact rank 5
+    W6, H6 = rand(rng, 30, 6), rand(rng, 6, 20)
+    @test_throws "numerically rank deficient" gsvdrecover(Xlow, W6, H6, 1, svd(Xlow))
+
     # `alg` must reach the polishing `nnmf`.  An unknown algorithm name is
     # rejected by `nnmf` only if `alg` is forwarded; the polishing call is the
     # sole `nnmf` invocation in this four-argument path.
@@ -150,8 +156,10 @@ end
 # be the largest array per call.
 @testset "non-AbstractArray X" begin
     rng = StableRNG(3)
-    U = rand(rng, 10, 3)
-    V = rand(rng, 3, 8)
+    # Rank 4 ≥ size(W0, 2): `gsvdrecover` rejects an SVD that is numerically
+    # rank deficient over the components the factorization claims.
+    U = rand(rng, 10, 4)
+    V = rand(rng, 4, 8)
     Xdense = U * V
     Xfact = MockFactored(U, V)
     W0, H0 = rand(rng, 10, 4), rand(rng, 4, 8)
@@ -188,6 +196,58 @@ end
     Wf_j, Hf_j, _ = GsvdInitialization.gsvdrecover(GsvdInitialization.joint_nnls, Xfact, copy(W0), copy(H0), 2, f)
     @test Wd_j ≈ Wf_j
     @test Hd_j ≈ Hf_j
+end
+
+@testset "appending strategy" begin
+    rng = StableRNG(7)
+    # Plant a rank-3 X but hand `gsvdrecover` only 2 of the 3 ground-truth
+    # components; `appending` must supply the missing one without touching the
+    # two it was given.
+    Wgt, Hgt = rand(rng, 12, 3), rand(rng, 3, 9)
+    X = Wgt * Hgt
+    W0, H0 = Wgt[:, 1:2], Hgt[1:2, :]
+    fs = svd(X)
+    f = (fs.U, fs.S, fs.V)
+    Wa, Ha, Λ = gsvdrecover(GsvdInitialization.appending, X, copy(W0), copy(H0), 1, f)
+    @test size(Wa, 2) == 3 && size(Ha, 1) == 3
+    # The existing factors are returned exactly, not merely approximately.
+    @test Wa[:, 1:2] == W0
+    @test Ha[1:2, :] == H0
+    @test all(>=(0), Wa) && all(>=(0), Ha)
+    # The appended component improves the fit.
+    @test sum(abs2, X - Wa * Ha) < sum(abs2, X - W0 * H0)
+    # `Λ` covers all candidates, aligned with `Hadd` in descending order.
+    @test length(Λ) == 2
+    @test issorted(Λ; rev = true)
+
+    # Factored X agrees with dense X (the strategy needs only `*` and
+    # `sum(abs2, ·)` from X).
+    Xfact = MockFactored(Wgt, Hgt)
+    Wf, Hf, _ = gsvdrecover(GsvdInitialization.appending, Xfact, copy(W0), copy(H0), 1, f)
+    @test Wf ≈ Wa
+    @test Hf ≈ Ha
+
+    # "At most kadd": when the factorization is already complete, no candidate
+    # survives the Λ threshold and amplitude refit, and the factors are
+    # returned with their original widths.
+    Wc, Hc, _ = gsvdrecover(GsvdInitialization.appending, X, copy(Wgt), copy(Hgt), 1, svd(X))
+    @test size(Wc, 2) == 3 && size(Hc, 1) == 3
+    @test Wc == Wgt
+    @test Hc == Hgt
+
+    # `appending(thresh)` curries the Λ threshold: an impossible threshold
+    # rejects even genuinely missing components (`Inf > Inf` is false, so this
+    # also covers exact rank deficiencies).
+    Wt, Ht, _ = gsvdrecover(GsvdInitialization.appending(Inf), X, copy(W0), copy(H0), 1, f)
+    @test Wt == W0 && Ht == H0
+
+    # Eltype is preserved.
+    W32, H32 = rand(rng, Float32, 12, 4), rand(rng, Float32, 4, 9)
+    X32 = W32 * H32
+    fs32 = svd(X32)
+    Wa32, Ha32, _ = gsvdrecover(GsvdInitialization.appending, X32, copy(W32), copy(H32), 2, (fs32.U, fs32.S, fs32.V))
+    @test eltype(Wa32) === Float32
+    @test eltype(Ha32) === Float32
 end
 
 @testset "eltype genericity" begin
@@ -238,8 +298,8 @@ end
     @test isapprox(r_default.H, r_explicit.H; rtol = 1.0e-6)
 
     # do-block form: anonymous strategy that simply forwards to `truncating`
-    r_doblock, _ = gsvdnmf(X, 9 => 10; alg = :cd) do X0, W0, H0, Hadd
-        GsvdInitialization.truncating(X0, W0, H0, Hadd)
+    r_doblock, _ = gsvdnmf(X, 9 => 10; alg = :cd) do X0, W0, H0, Hadd, Λ, kadd
+        GsvdInitialization.truncating(X0, W0, H0, Hadd, Λ, kadd)
     end
     @test isapprox(r_doblock.W, r_default.W; rtol = 1.0e-6)
     @test isapprox(r_doblock.H, r_default.H; rtol = 1.0e-6)
@@ -299,8 +359,9 @@ end
     @test_throws msg gsvdrecover(Xo, W, H, 1, f)
     @test_throws msg gsvdrecover(X, W, H, 1, fo)
     Hadd = rand(rng, 1, 8)
-    @test_throws msg GsvdInitialization.truncating(X, Wo, H, Hadd)
-    @test_throws msg GsvdInitialization.joint_nnls(X, Wo, H, Hadd)
+    @test_throws msg GsvdInitialization.truncating(X, Wo, H, Hadd, [Inf], 1)
+    @test_throws msg GsvdInitialization.joint_nnls(X, Wo, H, Hadd, [Inf], 1)
+    @test_throws msg GsvdInitialization.appending(X, Wo, H, Hadd, [Inf], 1)
 
     # Lazy wrappers carry no axis shift; they must reproduce plain-input
     # results.
